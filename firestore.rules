@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Usuários ─────────────────────────────────────────────────────
+    match /users/{userId} {
+      // Qualquer usuário autenticado pode ler perfis (dados públicos)
+      allow read: if request.auth != null;
+
+      // Apenas o próprio usuário pode criar seu documento (uid == docId)
+      allow create: if request.auth != null && request.auth.uid == userId;
+
+      // Apenas o próprio usuário pode editar seus dados
+      allow update: if request.auth != null && request.auth.uid == userId
+        && !("createdAt" in request.resource.data.diff(resource.data).affectedKeys());
+
+      // Ninguém deleta via client — apenas via Admin SDK / Cloud Functions
+      allow delete: if false;
+    }
+  }
+}

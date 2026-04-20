@@ -1,0 +1,43 @@
+# Dependências
+node_modules/
+app/node_modules/
+
+# Variáveis de ambiente e segredos
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+serviceAccountKey.json
+service-account*.json
+*-credentials.json
+*-adminsdk-*.json
+
+# Firebase
+.firebase/
+.firebaserc.local
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+database-debug.log
+pubsub-debug.log
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Build / cache
+dist/
+build/
+.cache/
+.tmp/
+*.tsbuildinfo
+
+# Editores e IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
