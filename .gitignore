@@ -6,6 +6,8 @@ app/node_modules/
 .env
 .env.*
 !.env.example
+app/.env
+app/.env.*
 *.key
 *.pem
 serviceAccountKey.json
@@ -30,6 +32,7 @@ npm-debug.log*
 # Build / cache
 dist/
 build/
+app/lib/
 .cache/
 .tmp/
 *.tsbuildinfo

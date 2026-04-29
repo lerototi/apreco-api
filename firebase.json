@@ -15,7 +15,7 @@
     }
   },
   "functions": {
-    "source": "functions",
+    "source": "app",
     "runtime": "nodejs20"
   }
 }
