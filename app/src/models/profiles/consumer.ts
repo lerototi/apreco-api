@@ -1,30 +1,30 @@
 /**
- * Schema do perfil do Consumidor.
+ * Schema do perfil do Consumer (Consumidor).
  *
- * Consumidores são usuários que utilizam a plataforma para encontrar e adquirir
- * produtos de produtores rurais e estabelecimentos.
+ * Consumers are users who use the platform to find and acquire
+ * products from rural producers and establishments.
  */
 
 import { db } from '../../config/firebase';
 
 // ─── Interface ────────────────────────────────────────────────────────────────
 
-export interface ConsumidorProfile {
-  /** Nome de exibição do consumidor */
+export interface ConsumerProfile {
+  /** Display name */
   name: string | null;
-  /** Cidade de residência */
+  /** City of residence */
   city: string | null;
-  /** Bairro de residência */
+  /** Neighborhood */
   neighborhood: string | null;
-  /** Interesses alimentares (ex: orgânicos, veganos, sazonais) */
+  /** Food interests (e.g. organic, vegan, seasonal) */
   interests: string[];
 }
 
-// ─── Schema (sanitização) ─────────────────────────────────────────────────────
+// ─── Schema (sanitization) ────────────────────────────────────────────────────
 
 type ProfileInput = Record<string, unknown>;
 
-export function buildConsumidorProfile(p: ProfileInput): ConsumidorProfile {
+export function buildConsumerProfile(p: ProfileInput): ConsumerProfile {
   return {
     name: (p.name as string) || null,
     city: (p.city as string) || null,
@@ -35,20 +35,20 @@ export function buildConsumidorProfile(p: ProfileInput): ConsumidorProfile {
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-const COLLECTION = 'consumidores';
+const COLLECTION = 'consumers';
 
-export async function createConsumidorProfile(uid: string, data: ConsumidorProfile): Promise<ConsumidorProfile> {
+export async function createConsumerProfile(uid: string, data: ConsumerProfile): Promise<ConsumerProfile> {
   await db.collection(COLLECTION).doc(uid).set(data);
   return data;
 }
 
-export async function findConsumidorProfile(uid: string): Promise<ConsumidorProfile | null> {
+export async function findConsumerProfile(uid: string): Promise<ConsumerProfile | null> {
   const doc = await db.collection(COLLECTION).doc(uid).get();
   if (!doc.exists) return null;
-  return doc.data() as ConsumidorProfile;
+  return doc.data() as ConsumerProfile;
 }
 
-export async function updateConsumidorProfile(uid: string, data: ConsumidorProfile): Promise<ConsumidorProfile> {
+export async function updateConsumerProfile(uid: string, data: ConsumerProfile): Promise<ConsumerProfile> {
   await db.collection(COLLECTION).doc(uid).set(data, { merge: true });
   return data;
 }

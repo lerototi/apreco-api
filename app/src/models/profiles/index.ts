@@ -1,20 +1,20 @@
 /**
- * Ponto central de exportação dos schemas de perfil.
+ * Central export point for profile schemas.
  *
- * Para adicionar um novo tipo de perfil:
- *  1. Crie o arquivo em `profiles/<novoTipo>.ts`
- *  2. Exporte a interface, a função `build<NovoTipo>Profile` e as funções CRUD
- *  3. Re-exporte aqui
- *  4. Registre a função no `PROFILE_BUILDERS` em `user.ts`
+ * To add a new profile type:
+ *  1. Create the file at `profiles/<newType>.ts`
+ *  2. Export the interface, `build<NewType>Profile` and CRUD functions
+ *  3. Re-export here
+ *  4. Register the builder in `PROFILE_BUILDERS` in `user.ts`
  */
 
 export {
-  ConsumidorProfile,
-  buildConsumidorProfile,
-  createConsumidorProfile,
-  findConsumidorProfile,
-  updateConsumidorProfile,
-} from './consumidor';
+  ConsumerProfile,
+  buildConsumerProfile,
+  createConsumerProfile,
+  findConsumerProfile,
+  updateConsumerProfile,
+} from './consumer';
 
 export {
   RuralProducerProfile,
@@ -33,7 +33,7 @@ export {
 } from './estabelecimento';
 
 export type UserProfile =
-  | import('./consumidor').ConsumidorProfile
+  | import('./consumer').ConsumerProfile
   | import('./ruralProducer').RuralProducerProfile
   | import('./estabelecimento').EstabelecimentoProfile
   | Record<string, unknown>;

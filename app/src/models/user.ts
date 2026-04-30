@@ -1,17 +1,17 @@
 import { db, admin } from '../config/firebase';
 import {
-  ConsumidorProfile,
+  ConsumerProfile,
   RuralProducerProfile,
   EstabelecimentoProfile,
   UserProfile,
-  buildConsumidorProfile,
+  buildConsumerProfile,
   buildRuralProducerProfile,
   buildEstabelecimentoProfile,
 } from './profiles';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type UserRole = 'consumidor' | 'ruralProducer' | 'estabelecimento';
+export type UserRole = 'consumer' | 'ruralProducer' | 'estabelecimento';
 
 export interface UserDocument {
   id: string;
@@ -41,7 +41,7 @@ export interface CreateUserInput {
 
 // Re-export profile types for consumers of this module
 export type {
-  ConsumidorProfile,
+  ConsumerProfile,
   RuralProducerProfile,
   EstabelecimentoProfile,
   UserProfile,
@@ -49,7 +49,7 @@ export type {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const VALID_ROLES: UserRole[] = ['consumidor', 'ruralProducer', 'estabelecimento'];
+export const VALID_ROLES: UserRole[] = ['consumer', 'ruralProducer', 'estabelecimento'];
 
 const COLLECTION = 'users';
 
@@ -62,7 +62,7 @@ type ProfileInput = Record<string, unknown>;
  * To add a new role: create a profile file, export a builder, and add it here.
  */
 const PROFILE_BUILDERS: Record<UserRole, (p: ProfileInput) => UserProfile> = {
-  consumidor: buildConsumidorProfile,
+  consumer: buildConsumerProfile,
   ruralProducer: buildRuralProducerProfile,
   estabelecimento: buildEstabelecimentoProfile,
 };
@@ -95,7 +95,7 @@ export async function createUser({ uid, email, displayName, photoURL }: CreateUs
     email: email ?? null,
     displayName: displayName ?? null,
     photoURL: photoURL ?? null,
-    role: 'consumidor',
+    role: 'consumer',
     createdAt: admin.firestore.FieldValue.serverTimestamp() as admin.firestore.Timestamp,
     updatedAt: admin.firestore.FieldValue.serverTimestamp() as admin.firestore.Timestamp,
     active: true,

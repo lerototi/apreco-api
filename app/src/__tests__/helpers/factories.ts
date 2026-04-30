@@ -5,7 +5,7 @@
 
 import type {
   UserDocument,
-  ConsumidorProfile,
+  ConsumerProfile,
   RuralProducerProfile,
   EstabelecimentoProfile,
   CreateUserInput,
@@ -27,11 +27,10 @@ export function makeUser(overrides: Partial<UserDocument> = {}): UserDocument {
     email: 'teste@apreco.com',
     displayName: 'Usuário Teste',
     photoURL: null,
-    role: 'consumidor',
+    role: 'consumer',
     createdAt: fakeTimestamp,
     updatedAt: fakeTimestamp,
     active: true,
-    profile: makeConsumidorProfile(),
     ...overrides,
   };
 }
@@ -43,7 +42,6 @@ export function makeRuralProducer(overrides: Partial<UserDocument> = {}): UserDo
     email: 'produtor@apreco.com',
     displayName: 'João Produtor',
     role: 'ruralProducer',
-    profile: makeRuralProducerProfile(),
     ...overrides,
   });
 }
@@ -55,16 +53,15 @@ export function makeEstabelecimento(overrides: Partial<UserDocument> = {}): User
     email: 'mercado@apreco.com',
     displayName: 'Mercado Central',
     role: 'estabelecimento',
-    profile: makeEstabelecimentoProfile(),
     ...overrides,
   });
 }
 
 // ─── Profile factories ────────────────────────────────────────────────────────
 
-export function makeConsumidorProfile(overrides: Partial<ConsumidorProfile> = {}): ConsumidorProfile {
+export function makeConsumerProfile(overrides: Partial<ConsumerProfile> = {}): ConsumerProfile {
   return {
-    name: 'Maria Consumidora',
+    name: 'Maria Consumer',
     city: 'São Paulo',
     neighborhood: null,
     interests: [],
@@ -165,4 +162,4 @@ export function makeResponse() {
 }
 
 /** Roles de teste para cada tipo */
-export const TEST_ROLES: UserRole[] = ['consumidor', 'ruralProducer', 'estabelecimento'];
+export const TEST_ROLES: UserRole[] = ['consumer', 'ruralProducer', 'estabelecimento'];

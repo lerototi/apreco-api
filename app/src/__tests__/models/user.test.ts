@@ -3,12 +3,11 @@
  *
  * Cobre:
  *  - isValidRole
- *  - sanitizeProfile (consumidor, ruralProducer, estabelecimento)
+ *  - sanitizeProfile (consumer, ruralProducer, estabelecimento)
  *  - toPublicProfile
  *  - createUser
  *  - findById
  *  - updateRole
- *  - updateProfile
  */
 
 import { firestoreStore } from '../__mocks__/firebase-module';
@@ -20,7 +19,6 @@ import {
   createUser,
   findById,
   updateRole,
-  updateProfile,
   VALID_ROLES,
 } from '../../models/user';
 
@@ -28,7 +26,7 @@ import {
   makeUser,
   makeRuralProducer,
   makeEstabelecimento,
-  makeConsumidorProfile,
+  makeConsumerProfile,
   makeRuralProducerProfile,
   makeEstabelecimentoProfile,
 } from '../helpers/factories';
@@ -51,32 +49,33 @@ describe('isValidRole', () => {
     expect(isValidRole('admin')).toBe(false);
     expect(isValidRole('')).toBe(false);
     expect(isValidRole('agricultor')).toBe(false);
-    expect(isValidRole('CONSUMIDOR')).toBe(false);
+    expect(isValidRole('CONSUMER')).toBe(false);
+    expect(isValidRole('consumidor')).toBe(false);
   });
 });
 
 // ─── sanitizeProfile ──────────────────────────────────────────────────────────
 
 describe('sanitizeProfile', () => {
-  describe('consumidor', () => {
+  describe('consumer', () => {
     it('mapeia campos corretamente', () => {
-      const input = makeConsumidorProfile({ city: 'Curitiba', interests: ['orgânicos'] }) as unknown as Record<string, unknown>;
-      const result = sanitizeProfile('consumidor', input);
+      const input = makeConsumerProfile({ city: 'Curitiba', interests: ['orgânicos'] }) as unknown as Record<string, unknown>;
+      const result = sanitizeProfile('consumer', input);
       expect(result).toEqual(expect.objectContaining({ city: 'Curitiba', interests: ['orgânicos'] }));
     });
 
     it('garante array vazio para interests ausente', () => {
-      const result = sanitizeProfile('consumidor', {});
+      const result = sanitizeProfile('consumer', {});
       expect((result as { interests: string[] }).interests).toEqual([]);
     });
 
     it('converte campos nulos corretamente', () => {
-      const result = sanitizeProfile('consumidor', { name: null });
+      const result = sanitizeProfile('consumer', { name: null });
       expect((result as { name: string | null }).name).toBeNull();
     });
 
     it('ignora campos não pertencentes ao schema', () => {
-      const result = sanitizeProfile('consumidor', { phone: '11999', campoExtra: 'x' });
+      const result = sanitizeProfile('consumer', { phone: '11999', campoExtra: 'x' });
       expect(result).not.toHaveProperty('phone');
       expect(result).not.toHaveProperty('campoExtra');
     });
@@ -139,7 +138,6 @@ describe('toPublicProfile', () => {
     expect(pub).toHaveProperty('displayName');
     expect(pub).toHaveProperty('photoURL');
     expect(pub).toHaveProperty('role');
-    expect(pub).toHaveProperty('profile');
     expect(pub).toHaveProperty('active');
   });
 
@@ -152,10 +150,10 @@ describe('toPublicProfile', () => {
 // ─── createUser ───────────────────────────────────────────────────────────────
 
 describe('createUser', () => {
-  it('cria documento no Firestore com role padrão consumidor', async () => {
+  it('cria documento no Firestore com role padrão consumer', async () => {
     const data = await createUser({ uid: 'uid-novo', email: 'novo@apreco.com', displayName: 'Novo' });
 
-    expect(data.role).toBe('consumidor');
+    expect(data.role).toBe('consumer');
     expect(data.active).toBe(true);
     expect(data.email).toBe('novo@apreco.com');
     expect(firestoreStore.has('users/uid-novo')).toBe(true);
@@ -198,33 +196,5 @@ describe('updateRole', () => {
 
     expect(result.role).toBe('ruralProducer');
     expect(firestoreStore.get('users/uid-role')!.role).toBe('ruralProducer');
-  });
-});
-
-// ─── updateProfile ────────────────────────────────────────────────────────────
-
-describe('updateProfile', () => {
-  it('atualiza o profile no store', async () => {
-    const user = makeRuralProducer({ id: 'uid-profile' });
-    firestoreStore.set('users/uid-profile', user);
-
-    const novoProfile = makeRuralProducerProfile({ nickname: 'novo_nick' });
-    const result = await updateProfile('uid-profile', novoProfile);
-
-    expect((result.profile as { nickname: string }).nickname).toBe('novo_nick');
-  });
-
-  it('funciona para todos os roles', async () => {
-    const users = [
-      makeUser({ id: 'uid-c', role: 'consumidor' }),
-      makeRuralProducer({ id: 'uid-r' }),
-      makeEstabelecimento({ id: 'uid-e' }),
-    ];
-
-    for (const u of users) {
-      firestoreStore.set(`users/${u.id}`, u);
-      const profile = sanitizeProfile(u.role, {});
-      await expect(updateProfile(u.id, profile)).resolves.not.toThrow();
-    }
   });
 });

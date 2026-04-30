@@ -16,7 +16,7 @@ import {
   makeRuralProducer,
   makeRequest,
   makeResponse,
-  makeConsumidorProfile,
+  makeConsumerProfile,
   makeRuralProducerProfile,
 } from '../helpers/factories';
 
@@ -49,7 +49,7 @@ describe('getMe', () => {
     expect(res.json).toHaveBeenCalled();
     const returned = (res.json as jest.Mock).mock.calls[0][0];
     expect(returned).not.toBeNull();
-    expect(returned.role).toBe('consumidor');
+    expect(returned.role).toBe('consumer');
   });
 
   it('retorna 500 quando o Firestore lança erro', async () => {
@@ -67,7 +67,7 @@ describe('getMe', () => {
     await getMe(req, res);
 
     expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Erro ao buscar perfil.' });
+    expect(res.json).toHaveBeenCalledWith({ error: 'Error fetching profile.' });
   });
 });
 
@@ -84,7 +84,7 @@ describe('updateMyRole', () => {
     await updateMyRole(req, res);
 
     expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'Perfil atualizado.', role: 'ruralProducer' })
+      expect.objectContaining({ message: 'Role updated.', role: 'ruralProducer' })
     );
   });
 
@@ -96,7 +96,7 @@ describe('updateMyRole', () => {
 
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringContaining('Role inválido') })
+      expect.objectContaining({ error: expect.stringContaining('Invalid role') })
     );
   });
 
@@ -123,17 +123,17 @@ describe('updateMyRole', () => {
 
 describe('updateMyProfile', () => {
   it('atualiza perfil com dados válidos', async () => {
-    const user = makeUser({ id: 'uid-test-001', role: 'consumidor' });
+    const user = makeUser({ id: 'uid-test-001', role: 'consumer' });
     firestoreStore.set('users/uid-test-001', user);
 
-    const newProfile = makeConsumidorProfile({ city: 'Rio de Janeiro' });
+    const newProfile = makeConsumerProfile({ city: 'Rio de Janeiro' });
     const req = makeRequest({ body: { profile: newProfile } });
     const res = makeResponse();
 
     await updateMyProfile(req, res);
 
     expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'Perfil atualizado.' })
+      expect.objectContaining({ message: 'Profile updated.' })
     );
   });
 
@@ -158,17 +158,17 @@ describe('updateMyProfile', () => {
     await updateMyProfile(req, res);
 
     expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Dados de perfil inválidos.' });
+    expect(res.json).toHaveBeenCalledWith({ error: 'Invalid profile data.' });
   });
 
   it('retorna 404 quando usuário não existe', async () => {
-    const req = makeRequest({ body: { profile: makeConsumidorProfile() } });
+    const req = makeRequest({ body: { profile: makeConsumerProfile() } });
     const res = makeResponse();
 
     await updateMyProfile(req, res);
 
     expect(res.status).toHaveBeenCalledWith(404);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Usuário não encontrado.' });
+    expect(res.json).toHaveBeenCalledWith({ error: 'User not found.' });
   });
 });
 
@@ -197,6 +197,6 @@ describe('getById', () => {
     await getById(req, res);
 
     expect(res.status).toHaveBeenCalledWith(404);
-    expect(res.json).toHaveBeenCalledWith({ error: 'Usuário não encontrado.' });
+    expect(res.json).toHaveBeenCalledWith({ error: 'User not found.' });
   });
 });
