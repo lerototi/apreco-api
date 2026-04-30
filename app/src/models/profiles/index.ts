@@ -25,15 +25,15 @@ export {
 } from './ruralProducer';
 
 export {
-  EstabelecimentoProfile,
-  buildEstabelecimentoProfile,
-  createEstabelecimentoProfile,
-  findEstabelecimentoProfile,
-  updateEstabelecimentoProfile,
-} from './estabelecimento';
+  EstablishmentProfile,
+  buildEstablishmentProfile,
+  createEstablishmentProfile,
+  findEstablishmentProfile,
+  updateEstablishmentProfile,
+} from './establishment';
 
 export type UserProfile =
   | import('./consumer').ConsumerProfile
   | import('./ruralProducer').RuralProducerProfile
-  | import('./estabelecimento').EstabelecimentoProfile
+  | import('./establishment').EstablishmentProfile
   | Record<string, unknown>;

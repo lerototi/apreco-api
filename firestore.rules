@@ -42,15 +42,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ─── Perfis de Estabelecimento ────────────────────────────────────
-    match /estabelecimentos/{userId} {
-      // Qualquer usuário autenticado pode ler
+    // ─── Establishment Profiles ───────────────────────────────────────
+    match /establishments/{userId} {
+      // Any authenticated user can read
       allow read: if request.auth != null;
 
-      // Apenas o próprio usuário cria/edita seu perfil
+      // Only the owner can create/update their profile
       allow create, update: if request.auth != null && request.auth.uid == userId;
 
-      // Ninguém deleta via client
+      // Deletion only via Admin SDK
       allow delete: if false;
     }
   }

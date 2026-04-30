@@ -2,16 +2,16 @@ import { db, admin } from '../config/firebase';
 import {
   ConsumerProfile,
   RuralProducerProfile,
-  EstabelecimentoProfile,
+  EstablishmentProfile,
   UserProfile,
   buildConsumerProfile,
   buildRuralProducerProfile,
-  buildEstabelecimentoProfile,
+  buildEstablishmentProfile,
 } from './profiles';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type UserRole = 'consumer' | 'ruralProducer' | 'estabelecimento';
+export type UserRole = 'consumer' | 'ruralProducer' | 'establishment';
 
 export interface UserDocument {
   id: string;
@@ -43,13 +43,13 @@ export interface CreateUserInput {
 export type {
   ConsumerProfile,
   RuralProducerProfile,
-  EstabelecimentoProfile,
+  EstablishmentProfile,
   UserProfile,
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const VALID_ROLES: UserRole[] = ['consumer', 'ruralProducer', 'estabelecimento'];
+export const VALID_ROLES: UserRole[] = ['consumer', 'ruralProducer', 'establishment'];
 
 const COLLECTION = 'users';
 
@@ -64,7 +64,7 @@ type ProfileInput = Record<string, unknown>;
 const PROFILE_BUILDERS: Record<UserRole, (p: ProfileInput) => UserProfile> = {
   consumer: buildConsumerProfile,
   ruralProducer: buildRuralProducerProfile,
-  estabelecimento: buildEstabelecimentoProfile,
+  establishment: buildEstablishmentProfile,
 };
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
  *
  * Cobre:
  *  - isValidRole
- *  - sanitizeProfile (consumer, ruralProducer, estabelecimento)
+ *  - sanitizeProfile (consumer, ruralProducer, establishment)
  *  - toPublicProfile
  *  - createUser
  *  - findById
@@ -25,10 +25,10 @@ import {
 import {
   makeUser,
   makeRuralProducer,
-  makeEstabelecimento,
+  makeEstablishment,
   makeConsumerProfile,
   makeRuralProducerProfile,
-  makeEstabelecimentoProfile,
+  makeEstablishmentProfile,
 } from '../helpers/factories';
 
 // Limpa o store fake antes de cada teste
@@ -110,15 +110,15 @@ describe('sanitizeProfile', () => {
     });
   });
 
-  describe('estabelecimento', () => {
+  describe('establishment', () => {
     it('mapeia campos corretamente', () => {
-      const input = makeEstabelecimentoProfile({ businessType: 'restaurante' }) as unknown as Record<string, unknown>;
-      const result = sanitizeProfile('estabelecimento', input);
+      const input = makeEstablishmentProfile({ businessType: 'restaurante' }) as unknown as Record<string, unknown>;
+      const result = sanitizeProfile('establishment', input);
       expect(result).toEqual(expect.objectContaining({ businessType: 'restaurante' }));
     });
 
     it('garante array vazio para recurringNeeds ausente', () => {
-      const result = sanitizeProfile('estabelecimento', {});
+      const result = sanitizeProfile('establishment', {});
       expect((result as { recurringNeeds: string[] }).recurringNeeds).toEqual([]);
     });
   });

@@ -1,15 +1,15 @@
 /**
- * Schema do perfil do Estabelecimento.
+ * Schema do perfil do Establishment.
  *
- * Estabelecimentos são negócios (restaurantes, mercados, padarias, etc.) que
- * utilizam a plataforma para encontrar fornecedores e produtores rurais.
+ * Establishments are businesses (restaurants, markets, bakeries, etc.) that
+ * use the platform to find suppliers and rural producers.
  */
 
 import { db } from '../../config/firebase';
 
 // ─── Interface ────────────────────────────────────────────────────────────────
 
-export interface EstabelecimentoProfile {
+export interface EstablishmentProfile {
   /** Telefone de contato */
   phone: string | null;
   /** Razão social ou nome fantasia */
@@ -34,7 +34,7 @@ export interface EstabelecimentoProfile {
 
 type ProfileInput = Record<string, unknown>;
 
-export function buildEstabelecimentoProfile(p: ProfileInput): EstabelecimentoProfile {
+export function buildEstablishmentProfile(p: ProfileInput): EstablishmentProfile {
   return {
     phone: (p.phone as string) || null,
     businessName: (p.businessName as string) || null,
@@ -50,20 +50,20 @@ export function buildEstabelecimentoProfile(p: ProfileInput): EstabelecimentoPro
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-const COLLECTION = 'estabelecimentos';
+const COLLECTION = 'establishments';
 
-export async function createEstabelecimentoProfile(uid: string, data: EstabelecimentoProfile): Promise<EstabelecimentoProfile> {
+export async function createEstablishmentProfile(uid: string, data: EstablishmentProfile): Promise<EstablishmentProfile> {
   await db.collection(COLLECTION).doc(uid).set(data);
   return data;
 }
 
-export async function findEstabelecimentoProfile(uid: string): Promise<EstabelecimentoProfile | null> {
+export async function findEstablishmentProfile(uid: string): Promise<EstablishmentProfile | null> {
   const doc = await db.collection(COLLECTION).doc(uid).get();
   if (!doc.exists) return null;
-  return doc.data() as EstabelecimentoProfile;
+  return doc.data() as EstablishmentProfile;
 }
 
-export async function updateEstabelecimentoProfile(uid: string, data: EstabelecimentoProfile): Promise<EstabelecimentoProfile> {
+export async function updateEstablishmentProfile(uid: string, data: EstablishmentProfile): Promise<EstablishmentProfile> {
   await db.collection(COLLECTION).doc(uid).set(data, { merge: true });
   return data;
 }

@@ -7,7 +7,7 @@ import type {
   UserDocument,
   ConsumerProfile,
   RuralProducerProfile,
-  EstabelecimentoProfile,
+  EstablishmentProfile,
   CreateUserInput,
   UserRole,
 } from '../../models/user';
@@ -46,13 +46,13 @@ export function makeRuralProducer(overrides: Partial<UserDocument> = {}): UserDo
   });
 }
 
-/** Cria um usuário com role 'estabelecimento' */
-export function makeEstabelecimento(overrides: Partial<UserDocument> = {}): UserDocument {
+/** Cria um usuário com role 'establishment' */
+export function makeEstablishment(overrides: Partial<UserDocument> = {}): UserDocument {
   return makeUser({
-    id: 'uid-estabelecimento-001',
+    id: 'uid-establishment-001',
     email: 'mercado@apreco.com',
     displayName: 'Mercado Central',
-    role: 'estabelecimento',
+    role: 'establishment',
     ...overrides,
   });
 }
@@ -89,7 +89,7 @@ export function makeRuralProducerProfile(overrides: Partial<RuralProducerProfile
   };
 }
 
-export function makeEstabelecimentoProfile(overrides: Partial<EstabelecimentoProfile> = {}): EstabelecimentoProfile {
+export function makeEstablishmentProfile(overrides: Partial<EstablishmentProfile> = {}): EstablishmentProfile {
   return {
     phone: '(11) 3000-0000',
     businessName: 'Mercado Central',
@@ -162,4 +162,4 @@ export function makeResponse() {
 }
 
 /** Roles de teste para cada tipo */
-export const TEST_ROLES: UserRole[] = ['consumer', 'ruralProducer', 'estabelecimento'];
+export const TEST_ROLES: UserRole[] = ['consumer', 'ruralProducer', 'establishment'];

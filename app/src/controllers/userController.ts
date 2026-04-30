@@ -3,10 +3,10 @@ import * as User from '../models/user';
 import {
   findConsumerProfile,
   findRuralProducerProfile,
-  findEstabelecimentoProfile,
+  findEstablishmentProfile,
   updateConsumerProfile,
   updateRuralProducerProfile,
-  updateEstabelecimentoProfile,
+  updateEstablishmentProfile,
   buildConsumerProfile,
 } from '../models/profiles';
 
@@ -14,9 +14,9 @@ import {
 
 async function findProfileByRole(uid: string, role: User.UserRole) {
   switch (role) {
-    case 'consumer':       return findConsumerProfile(uid);
-    case 'ruralProducer':  return findRuralProducerProfile(uid);
-    case 'estabelecimento': return findEstabelecimentoProfile(uid);
+    case 'consumer':      return findConsumerProfile(uid);
+    case 'ruralProducer': return findRuralProducerProfile(uid);
+    case 'establishment': return findEstablishmentProfile(uid);
   }
 }
 
@@ -26,8 +26,8 @@ async function upsertProfileByRole(uid: string, role: User.UserRole, data: User.
       return updateConsumerProfile(uid, User.sanitizeProfile('consumer', data as Record<string, unknown>) as ReturnType<typeof buildConsumerProfile>);
     case 'ruralProducer':
       return updateRuralProducerProfile(uid, User.sanitizeProfile('ruralProducer', data as Record<string, unknown>) as any);
-    case 'estabelecimento':
-      return updateEstabelecimentoProfile(uid, User.sanitizeProfile('estabelecimento', data as Record<string, unknown>) as any);
+    case 'establishment':
+      return updateEstablishmentProfile(uid, User.sanitizeProfile('establishment', data as Record<string, unknown>) as any);
   }
 }
 
