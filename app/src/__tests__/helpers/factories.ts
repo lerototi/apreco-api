@@ -6,7 +6,7 @@
 import type {
   UserDocument,
   ConsumidorProfile,
-  AgricultorProfile,
+  RuralProducerProfile,
   EstabelecimentoProfile,
   CreateUserInput,
   UserRole,
@@ -36,14 +36,14 @@ export function makeUser(overrides: Partial<UserDocument> = {}): UserDocument {
   };
 }
 
-/** Cria um usuário com role 'agricultor' */
-export function makeAgricultor(overrides: Partial<UserDocument> = {}): UserDocument {
+/** Cria um usuário com role 'ruralProducer' */
+export function makeRuralProducer(overrides: Partial<UserDocument> = {}): UserDocument {
   return makeUser({
-    id: 'uid-agricultor-001',
-    email: 'agricultor@apreco.com',
-    displayName: 'João Agricultor',
-    role: 'agricultor',
-    profile: makeAgricultorProfile(),
+    id: 'uid-ruralproducer-001',
+    email: 'produtor@apreco.com',
+    displayName: 'João Produtor',
+    role: 'ruralProducer',
+    profile: makeRuralProducerProfile(),
     ...overrides,
   });
 }
@@ -64,28 +64,30 @@ export function makeEstabelecimento(overrides: Partial<UserDocument> = {}): User
 
 export function makeConsumidorProfile(overrides: Partial<ConsumidorProfile> = {}): ConsumidorProfile {
   return {
-    phone: null,
-    address: null,
+    name: 'Maria Consumidora',
     city: 'São Paulo',
-    state: 'SP',
-    bio: null,
+    neighborhood: null,
     interests: [],
     ...overrides,
   };
 }
 
-export function makeAgricultorProfile(overrides: Partial<AgricultorProfile> = {}): AgricultorProfile {
+export function makeRuralProducerProfile(overrides: Partial<RuralProducerProfile> = {}): RuralProducerProfile {
   return {
-    phone: '(11) 99999-0000',
-    farmName: 'Sítio Boa Esperança',
-    address: 'Estrada Rural, km 5',
-    city: 'Campinas',
-    state: 'SP',
+    nickname: 'joao_horta',
     bio: 'Produtor orgânico há 10 anos.',
-    products: ['tomate', 'alface'],
-    deliveryOptions: ['retirada', 'entrega'],
+    phone: '(11) 99999-0000',
+    isWhatsApp: true,
+    farmName: 'Sítio Boa Esperança',
+    city: 'Campinas',
+    neighborhood: 'Barão Geraldo',
+    productionSites: ['Sítio principal', 'Horta urbana'],
     organic: true,
     certifications: ['IBD'],
+    deliveryOptions: ['retirada', 'entrega'],
+    instagram: 'joao_horta',
+    facebook: null,
+    website: null,
     ...overrides,
   };
 }
@@ -162,5 +164,5 @@ export function makeResponse() {
   return res as unknown as import('express').Response;
 }
 
-/** Cria roles de teste para cada tipo */
-export const TEST_ROLES: UserRole[] = ['consumidor', 'agricultor', 'estabelecimento'];
+/** Roles de teste para cada tipo */
+export const TEST_ROLES: UserRole[] = ['consumidor', 'ruralProducer', 'estabelecimento'];

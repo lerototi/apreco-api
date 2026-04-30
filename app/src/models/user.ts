@@ -1,44 +1,17 @@
 import { db, admin } from '../config/firebase';
+import {
+  ConsumidorProfile,
+  RuralProducerProfile,
+  EstabelecimentoProfile,
+  UserProfile,
+  buildConsumidorProfile,
+  buildRuralProducerProfile,
+  buildEstabelecimentoProfile,
+} from './profiles';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type UserRole = 'consumidor' | 'agricultor' | 'estabelecimento';
-
-export interface ConsumidorProfile {
-  phone: string | null;
-  address: string | null;
-  city: string | null;
-  state: string | null;
-  bio: string | null;
-  interests: string[];
-}
-
-export interface AgricultorProfile {
-  phone: string | null;
-  farmName: string | null;
-  address: string | null;
-  city: string | null;
-  state: string | null;
-  bio: string | null;
-  products: string[];
-  deliveryOptions: string[];
-  organic: boolean;
-  certifications: string[];
-}
-
-export interface EstabelecimentoProfile {
-  phone: string | null;
-  businessName: string | null;
-  cnpj: string | null;
-  address: string | null;
-  city: string | null;
-  state: string | null;
-  bio: string | null;
-  businessType: string | null;
-  recurringNeeds: string[];
-}
-
-export type UserProfile = ConsumidorProfile | AgricultorProfile | EstabelecimentoProfile | Record<string, unknown>;
+export type UserRole = 'consumidor' | 'ruralProducer' | 'estabelecimento';
 
 export interface UserDocument {
   id: string;
@@ -68,57 +41,39 @@ export interface CreateUserInput {
   photoURL?: string | null;
 }
 
+// Re-export profile types for consumers of this module
+export type {
+  ConsumidorProfile,
+  RuralProducerProfile,
+  EstabelecimentoProfile,
+  UserProfile,
+};
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const VALID_ROLES: UserRole[] = ['consumidor', 'agricultor', 'estabelecimento'];
+export const VALID_ROLES: UserRole[] = ['consumidor', 'ruralProducer', 'estabelecimento'];
 
 const COLLECTION = 'users';
 
-// ─── Profile schemas ──────────────────────────────────────────────────────────
+// ─── Profile builders ─────────────────────────────────────────────────────────
 
 type ProfileInput = Record<string, unknown>;
 
-const PROFILE_SCHEMAS: Record<UserRole, (p: ProfileInput) => UserProfile> = {
-  consumidor: (p): ConsumidorProfile => ({
-    phone: (p.phone as string) || null,
-    address: (p.address as string) || null,
-    city: (p.city as string) || null,
-    state: (p.state as string) || null,
-    bio: (p.bio as string) || null,
-    interests: Array.isArray(p.interests) ? (p.interests as string[]) : [],
-  }),
-
-  agricultor: (p): AgricultorProfile => ({
-    phone: (p.phone as string) || null,
-    farmName: (p.farmName as string) || null,
-    address: (p.address as string) || null,
-    city: (p.city as string) || null,
-    state: (p.state as string) || null,
-    bio: (p.bio as string) || null,
-    products: Array.isArray(p.products) ? (p.products as string[]) : [],
-    deliveryOptions: Array.isArray(p.deliveryOptions) ? (p.deliveryOptions as string[]) : [],
-    organic: typeof p.organic === 'boolean' ? p.organic : false,
-    certifications: Array.isArray(p.certifications) ? (p.certifications as string[]) : [],
-  }),
-
-  estabelecimento: (p): EstabelecimentoProfile => ({
-    phone: (p.phone as string) || null,
-    businessName: (p.businessName as string) || null,
-    cnpj: (p.cnpj as string) || null,
-    address: (p.address as string) || null,
-    city: (p.city as string) || null,
-    state: (p.state as string) || null,
-    bio: (p.bio as string) || null,
-    businessType: (p.businessType as string) || null,
-    recurringNeeds: Array.isArray(p.recurringNeeds) ? (p.recurringNeeds as string[]) : [],
-  }),
+/**
+ * Maps each UserRole to its profile builder function.
+ * To add a new role: create a profile file, export a builder, and add it here.
+ */
+const PROFILE_BUILDERS: Record<UserRole, (p: ProfileInput) => UserProfile> = {
+  consumidor: buildConsumidorProfile,
+  ruralProducer: buildRuralProducerProfile,
+  estabelecimento: buildEstabelecimentoProfile,
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Pure helpers ─────────────────────────────────────────────────────────────
 
 export function sanitizeProfile(role: UserRole, profile: ProfileInput): UserProfile {
-  const schema = PROFILE_SCHEMAS[role];
-  return schema ? schema(profile) : {};
+  const build = PROFILE_BUILDERS[role];
+  return build ? build(profile) : {};
 }
 
 export function isValidRole(role: string): role is UserRole {

@@ -13,11 +13,11 @@ import { firestoreStore, db as mockDb } from '../__mocks__/firebase-module';
 import { getMe, updateMyRole, updateMyProfile, getById } from '../../controllers/userController';
 import {
   makeUser,
-  makeAgricultor,
+  makeRuralProducer,
   makeRequest,
   makeResponse,
   makeConsumidorProfile,
-  makeAgricultorProfile,
+  makeRuralProducerProfile,
 } from '../helpers/factories';
 
 beforeEach(() => {
@@ -78,13 +78,13 @@ describe('updateMyRole', () => {
     const user = makeUser({ id: 'uid-test-001' });
     firestoreStore.set('users/uid-test-001', user);
 
-    const req = makeRequest({ body: { role: 'agricultor' } });
+    const req = makeRequest({ body: { role: 'ruralProducer' } });
     const res = makeResponse();
 
     await updateMyRole(req, res);
 
     expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'Perfil atualizado.', role: 'agricultor' })
+      expect.objectContaining({ message: 'Perfil atualizado.', role: 'ruralProducer' })
     );
   });
 
@@ -98,6 +98,15 @@ describe('updateMyRole', () => {
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({ error: expect.stringContaining('Role inválido') })
     );
+  });
+
+  it('retorna 400 para role legado agricultor (não mais suportado)', async () => {
+    const req = makeRequest({ body: { role: 'agricultor' } });
+    const res = makeResponse();
+
+    await updateMyRole(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
   });
 
   it('retorna 400 quando role está ausente no body', async () => {
@@ -129,10 +138,10 @@ describe('updateMyProfile', () => {
   });
 
   it('sanitiza campos desconhecidos antes de salvar', async () => {
-    const user = makeAgricultor({ id: 'uid-test-001' });
+    const user = makeRuralProducer({ id: 'uid-test-001' });
     firestoreStore.set('users/uid-test-001', user);
 
-    const req = makeRequest({ body: { profile: { ...makeAgricultorProfile(), campoInvalido: 'hack' } } });
+    const req = makeRequest({ body: { profile: { ...makeRuralProducerProfile(), campoInvalido: 'hack' } } });
     const res = makeResponse();
 
     await updateMyProfile(req, res);

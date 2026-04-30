@@ -3,7 +3,7 @@
  *
  * Cobre:
  *  - isValidRole
- *  - sanitizeProfile (consumidor, agricultor, estabelecimento)
+ *  - sanitizeProfile (consumidor, ruralProducer, estabelecimento)
  *  - toPublicProfile
  *  - createUser
  *  - findById
@@ -26,10 +26,10 @@ import {
 
 import {
   makeUser,
-  makeAgricultor,
+  makeRuralProducer,
   makeEstabelecimento,
   makeConsumidorProfile,
-  makeAgricultorProfile,
+  makeRuralProducerProfile,
   makeEstabelecimentoProfile,
 } from '../helpers/factories';
 
@@ -50,6 +50,7 @@ describe('isValidRole', () => {
   it('retorna false para role inválido', () => {
     expect(isValidRole('admin')).toBe(false);
     expect(isValidRole('')).toBe(false);
+    expect(isValidRole('agricultor')).toBe(false);
     expect(isValidRole('CONSUMIDOR')).toBe(false);
   });
 });
@@ -59,37 +60,54 @@ describe('isValidRole', () => {
 describe('sanitizeProfile', () => {
   describe('consumidor', () => {
     it('mapeia campos corretamente', () => {
-      const input = makeConsumidorProfile({ city: 'Curitiba', interests: ['frutas'] }) as unknown as Record<string, unknown>;
+      const input = makeConsumidorProfile({ city: 'Curitiba', interests: ['orgânicos'] }) as unknown as Record<string, unknown>;
       const result = sanitizeProfile('consumidor', input);
-      expect(result).toEqual(expect.objectContaining({ city: 'Curitiba', interests: ['frutas'] }));
+      expect(result).toEqual(expect.objectContaining({ city: 'Curitiba', interests: ['orgânicos'] }));
     });
 
-    it('garante arrays vazios para campos ausentes', () => {
+    it('garante array vazio para interests ausente', () => {
       const result = sanitizeProfile('consumidor', {});
       expect((result as { interests: string[] }).interests).toEqual([]);
     });
 
     it('converte campos nulos corretamente', () => {
-      const result = sanitizeProfile('consumidor', { phone: null });
-      expect((result as { phone: string | null }).phone).toBeNull();
-    });
-  });
-
-  describe('agricultor', () => {
-    it('mapeia campos corretamente', () => {
-      const input = makeAgricultorProfile({ organic: true, products: ['tomate'] }) as unknown as Record<string, unknown>;
-      const result = sanitizeProfile('agricultor', input);
-      expect(result).toEqual(expect.objectContaining({ organic: true, products: ['tomate'] }));
-    });
-
-    it('organic padrão é false quando ausente', () => {
-      const result = sanitizeProfile('agricultor', {});
-      expect((result as { organic: boolean }).organic).toBe(false);
+      const result = sanitizeProfile('consumidor', { name: null });
+      expect((result as { name: string | null }).name).toBeNull();
     });
 
     it('ignora campos não pertencentes ao schema', () => {
-      const result = sanitizeProfile('agricultor', { campoDesconhecido: 'valor' });
+      const result = sanitizeProfile('consumidor', { phone: '11999', campoExtra: 'x' });
+      expect(result).not.toHaveProperty('phone');
+      expect(result).not.toHaveProperty('campoExtra');
+    });
+  });
+
+  describe('ruralProducer', () => {
+    it('mapeia campos corretamente', () => {
+      const input = makeRuralProducerProfile({ nickname: 'ze_horta', productionSites: ['feira'] }) as unknown as Record<string, unknown>;
+      const result = sanitizeProfile('ruralProducer', input);
+      expect(result).toEqual(expect.objectContaining({ nickname: 'ze_horta', productionSites: ['feira'] }));
+    });
+
+    it('organic padrão é false quando ausente', () => {
+      const result = sanitizeProfile('ruralProducer', {});
+      expect((result as { organic: boolean }).organic).toBe(false);
+    });
+
+    it('isWhatsApp padrão é false quando ausente', () => {
+      const result = sanitizeProfile('ruralProducer', {});
+      expect((result as { isWhatsApp: boolean }).isWhatsApp).toBe(false);
+    });
+
+    it('productionSites padrão é array vazio quando ausente', () => {
+      const result = sanitizeProfile('ruralProducer', {});
+      expect((result as { productionSites: string[] }).productionSites).toEqual([]);
+    });
+
+    it('ignora campos não pertencentes ao schema', () => {
+      const result = sanitizeProfile('ruralProducer', { campoDesconhecido: 'valor', locaisProducao: ['x'] });
       expect(result).not.toHaveProperty('campoDesconhecido');
+      expect(result).not.toHaveProperty('locaisProducao');
     });
   });
 
@@ -176,10 +194,10 @@ describe('updateRole', () => {
     const user = makeUser({ id: 'uid-role' });
     firestoreStore.set('users/uid-role', user);
 
-    const result = await updateRole('uid-role', 'agricultor');
+    const result = await updateRole('uid-role', 'ruralProducer');
 
-    expect(result.role).toBe('agricultor');
-    expect(firestoreStore.get('users/uid-role')!.role).toBe('agricultor');
+    expect(result.role).toBe('ruralProducer');
+    expect(firestoreStore.get('users/uid-role')!.role).toBe('ruralProducer');
   });
 });
 
@@ -187,19 +205,19 @@ describe('updateRole', () => {
 
 describe('updateProfile', () => {
   it('atualiza o profile no store', async () => {
-    const user = makeAgricultor({ id: 'uid-profile' });
+    const user = makeRuralProducer({ id: 'uid-profile' });
     firestoreStore.set('users/uid-profile', user);
 
-    const novoProfile = makeAgricultorProfile({ farmName: 'Novo Sítio' });
+    const novoProfile = makeRuralProducerProfile({ nickname: 'novo_nick' });
     const result = await updateProfile('uid-profile', novoProfile);
 
-    expect((result.profile as { farmName: string }).farmName).toBe('Novo Sítio');
+    expect((result.profile as { nickname: string }).nickname).toBe('novo_nick');
   });
 
   it('funciona para todos os roles', async () => {
     const users = [
       makeUser({ id: 'uid-c', role: 'consumidor' }),
-      makeAgricultor({ id: 'uid-a' }),
+      makeRuralProducer({ id: 'uid-r' }),
       makeEstabelecimento({ id: 'uid-e' }),
     ];
 
