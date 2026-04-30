@@ -5,6 +5,8 @@
  * utilizam a plataforma para encontrar fornecedores e produtores rurais.
  */
 
+import { db } from '../../config/firebase';
+
 // ─── Interface ────────────────────────────────────────────────────────────────
 
 export interface EstabelecimentoProfile {
@@ -44,4 +46,24 @@ export function buildEstabelecimentoProfile(p: ProfileInput): EstabelecimentoPro
     businessType: (p.businessType as string) || null,
     recurringNeeds: Array.isArray(p.recurringNeeds) ? (p.recurringNeeds as string[]) : [],
   };
+}
+
+// ─── CRUD ─────────────────────────────────────────────────────────────────────
+
+const COLLECTION = 'estabelecimentos';
+
+export async function createEstabelecimentoProfile(uid: string, data: EstabelecimentoProfile): Promise<EstabelecimentoProfile> {
+  await db.collection(COLLECTION).doc(uid).set(data);
+  return data;
+}
+
+export async function findEstabelecimentoProfile(uid: string): Promise<EstabelecimentoProfile | null> {
+  const doc = await db.collection(COLLECTION).doc(uid).get();
+  if (!doc.exists) return null;
+  return doc.data() as EstabelecimentoProfile;
+}
+
+export async function updateEstabelecimentoProfile(uid: string, data: EstabelecimentoProfile): Promise<EstabelecimentoProfile> {
+  await db.collection(COLLECTION).doc(uid).set(data, { merge: true });
+  return data;
 }

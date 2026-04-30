@@ -7,6 +7,8 @@
  * agrícolas diretamente da terra ou criação animal.
  */
 
+import { db } from '../../config/firebase';
+
 // ─── Interface ────────────────────────────────────────────────────────────────
 
 export interface RuralProducerProfile {
@@ -61,4 +63,24 @@ export function buildRuralProducerProfile(p: ProfileInput): RuralProducerProfile
     facebook: (p.facebook as string) || null,
     website: (p.website as string) || null,
   };
+}
+
+// ─── CRUD ─────────────────────────────────────────────────────────────────────
+
+const COLLECTION = 'ruralProducers';
+
+export async function createRuralProducerProfile(uid: string, data: RuralProducerProfile): Promise<RuralProducerProfile> {
+  await db.collection(COLLECTION).doc(uid).set(data);
+  return data;
+}
+
+export async function findRuralProducerProfile(uid: string): Promise<RuralProducerProfile | null> {
+  const doc = await db.collection(COLLECTION).doc(uid).get();
+  if (!doc.exists) return null;
+  return doc.data() as RuralProducerProfile;
+}
+
+export async function updateRuralProducerProfile(uid: string, data: RuralProducerProfile): Promise<RuralProducerProfile> {
+  await db.collection(COLLECTION).doc(uid).set(data, { merge: true });
+  return data;
 }

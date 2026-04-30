@@ -17,5 +17,41 @@ service cloud.firestore {
       // Ninguém deleta via client — apenas via Admin SDK / Cloud Functions
       allow delete: if false;
     }
+
+    // ─── Perfis de Consumidor ─────────────────────────────────────────
+    match /consumidores/{userId} {
+      // Qualquer usuário autenticado pode ler (ex: busca por consumidores)
+      allow read: if request.auth != null;
+
+      // Apenas o próprio usuário cria/edita seu perfil
+      allow create, update: if request.auth != null && request.auth.uid == userId;
+
+      // Ninguém deleta via client
+      allow delete: if false;
+    }
+
+    // ─── Perfis de Produtor Rural ──────────────────────────────────────
+    match /ruralProducers/{userId} {
+      // Leitura pública (marketplace de produtores)
+      allow read: if request.auth != null;
+
+      // Apenas o próprio usuário cria/edita seu perfil
+      allow create, update: if request.auth != null && request.auth.uid == userId;
+
+      // Ninguém deleta via client
+      allow delete: if false;
+    }
+
+    // ─── Perfis de Estabelecimento ────────────────────────────────────
+    match /estabelecimentos/{userId} {
+      // Qualquer usuário autenticado pode ler
+      allow read: if request.auth != null;
+
+      // Apenas o próprio usuário cria/edita seu perfil
+      allow create, update: if request.auth != null && request.auth.uid == userId;
+
+      // Ninguém deleta via client
+      allow delete: if false;
+    }
   }
 }

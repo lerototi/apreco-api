@@ -5,6 +5,8 @@
  * produtos de produtores rurais e estabelecimentos.
  */
 
+import { db } from '../../config/firebase';
+
 // ─── Interface ────────────────────────────────────────────────────────────────
 
 export interface ConsumidorProfile {
@@ -29,4 +31,24 @@ export function buildConsumidorProfile(p: ProfileInput): ConsumidorProfile {
     neighborhood: (p.neighborhood as string) || null,
     interests: Array.isArray(p.interests) ? (p.interests as string[]) : [],
   };
+}
+
+// ─── CRUD ─────────────────────────────────────────────────────────────────────
+
+const COLLECTION = 'consumidores';
+
+export async function createConsumidorProfile(uid: string, data: ConsumidorProfile): Promise<ConsumidorProfile> {
+  await db.collection(COLLECTION).doc(uid).set(data);
+  return data;
+}
+
+export async function findConsumidorProfile(uid: string): Promise<ConsumidorProfile | null> {
+  const doc = await db.collection(COLLECTION).doc(uid).get();
+  if (!doc.exists) return null;
+  return doc.data() as ConsumidorProfile;
+}
+
+export async function updateConsumidorProfile(uid: string, data: ConsumidorProfile): Promise<ConsumidorProfile> {
+  await db.collection(COLLECTION).doc(uid).set(data, { merge: true });
+  return data;
 }

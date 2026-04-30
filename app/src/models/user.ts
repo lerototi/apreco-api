@@ -22,7 +22,6 @@ export interface UserDocument {
   createdAt: admin.firestore.Timestamp;
   updatedAt: admin.firestore.Timestamp;
   active: boolean;
-  profile: UserProfile;
 }
 
 export interface PublicProfile {
@@ -30,7 +29,6 @@ export interface PublicProfile {
   displayName: string | null;
   photoURL: string | null;
   role: UserRole;
-  profile: UserProfile;
   active: boolean;
 }
 
@@ -86,7 +84,6 @@ export function toPublicProfile(user: UserDocument): PublicProfile {
     displayName: user.displayName,
     photoURL: user.photoURL,
     role: user.role,
-    profile: user.profile,
     active: user.active,
   };
 }
@@ -102,7 +99,6 @@ export async function createUser({ uid, email, displayName, photoURL }: CreateUs
     createdAt: admin.firestore.FieldValue.serverTimestamp() as admin.firestore.Timestamp,
     updatedAt: admin.firestore.FieldValue.serverTimestamp() as admin.firestore.Timestamp,
     active: true,
-    profile: {},
   };
 
   await db.collection(COLLECTION).doc(uid).set(data);
@@ -121,12 +117,4 @@ export async function updateRole(uid: string, role: UserRole): Promise<{ role: U
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
   return { role };
-}
-
-export async function updateProfile(uid: string, profileData: UserProfile): Promise<{ profile: UserProfile }> {
-  await db.collection(COLLECTION).doc(uid).update({
-    profile: profileData,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-  return { profile: profileData };
 }

@@ -5,6 +5,7 @@ import * as userController from '../controllers/userController';
 const router = Router();
 
 router.get('/me', authenticate, userController.getMe);
+router.get('/me/profile', authenticate, userController.getMyProfile);
 router.put('/me/role', authenticate, userController.updateMyRole);
 router.put('/me/profile', authenticate, userController.updateMyProfile);
 router.get('/:id', authenticate, userController.getById);
