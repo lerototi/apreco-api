@@ -18,7 +18,10 @@ export interface UserDocument {
   email: string | null;
   displayName: string | null;
   photoURL: string | null;
+  /** Primary / legacy single role — kept for backwards compatibility. */
   role: UserRole;
+  /** All roles this user has active profiles for. Always includes `role`. */
+  roles: UserRole[];
   createdAt: admin.firestore.Timestamp;
   updatedAt: admin.firestore.Timestamp;
   active: boolean;
@@ -28,7 +31,7 @@ export interface PublicProfile {
   id: string;
   displayName: string | null;
   photoURL: string | null;
-  role: UserRole;
+  roles: UserRole[];
   active: boolean;
 }
 
@@ -83,7 +86,7 @@ export function toPublicProfile(user: UserDocument): PublicProfile {
     id: user.id,
     displayName: user.displayName,
     photoURL: user.photoURL,
-    role: user.role,
+    roles: user.roles ?? [user.role],
     active: user.active,
   };
 }
@@ -96,6 +99,7 @@ export async function createUser({ uid, email, displayName, photoURL }: CreateUs
     displayName: displayName ?? null,
     photoURL: photoURL ?? null,
     role: 'consumer',
+    roles: ['consumer'],
     createdAt: admin.firestore.FieldValue.serverTimestamp() as admin.firestore.Timestamp,
     updatedAt: admin.firestore.FieldValue.serverTimestamp() as admin.firestore.Timestamp,
     active: true,
@@ -108,13 +112,33 @@ export async function createUser({ uid, email, displayName, photoURL }: CreateUs
 export async function findById(uid: string): Promise<UserDocument | null> {
   const doc = await db.collection(COLLECTION).doc(uid).get();
   if (!doc.exists) return null;
-  return { id: doc.id, ...doc.data() } as UserDocument;
+  const data = doc.data()!;
+  // Back-compat: if doc was created before multi-role, synthesise roles from role
+  if (!data.roles) {
+    data.roles = [data.role];
+  }
+  return { id: doc.id, ...data } as UserDocument;
 }
 
-export async function updateRole(uid: string, role: UserRole): Promise<{ role: UserRole }> {
+/**
+ * Adds a role to the user's roles array (idempotent).
+ * Also updates the legacy `role` field to the new role so existing
+ * single-role code paths continue to work.
+ */
+export async function addRole(uid: string, role: UserRole): Promise<{ roles: UserRole[] }> {
   await db.collection(COLLECTION).doc(uid).update({
     role,
+    roles: admin.firestore.FieldValue.arrayUnion(role),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
-  return { role };
+  const updated = await findById(uid);
+  return { roles: updated?.roles ?? [role] };
+}
+
+/**
+ * @deprecated Use addRole instead.
+ * Kept for internal back-compat — replaces the entire roles array with a single role.
+ */
+export async function updateRole(uid: string, role: UserRole): Promise<{ roles: UserRole[] }> {
+  return addRole(uid, role);
 }

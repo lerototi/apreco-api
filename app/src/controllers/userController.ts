@@ -54,6 +54,12 @@ export async function getMe(req: Request, res: Response): Promise<void> {
   }
 }
 
+/**
+ * GET /users/me/profile?role=<role>
+ *
+ * Returns the sub-profile for the requested role.
+ * If no `role` query param is provided, returns all profiles the user has roles for.
+ */
 export async function getMyProfile(req: Request, res: Response): Promise<void> {
   try {
     const user = await User.findById(req.user.uid);
@@ -62,15 +68,44 @@ export async function getMyProfile(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const profile = await findProfileByRole(req.user.uid, user.role);
-    res.json({ profile: profile ?? null });
+    const requestedRole = req.query.role as string | undefined;
+
+    if (requestedRole) {
+      // Single role requested
+      if (!User.isValidRole(requestedRole)) {
+        res.status(400).json({ error: `Invalid role. Accepted values: ${User.VALID_ROLES.join(', ')}` });
+        return;
+      }
+      if (!user.roles.includes(requestedRole as User.UserRole)) {
+        res.status(404).json({ error: `User does not have role '${requestedRole}'.` });
+        return;
+      }
+      const profile = await findProfileByRole(req.user.uid, requestedRole as User.UserRole);
+      res.json({ role: requestedRole, profile: profile ?? null });
+      return;
+    }
+
+    // No role param — return all profiles
+    const profiles: Record<string, unknown> = {};
+    await Promise.all(
+      user.roles.map(async (role) => {
+        profiles[role] = await findProfileByRole(req.user.uid, role) ?? null;
+      })
+    );
+    res.json({ roles: user.roles, profiles });
   } catch (e) {
     console.error('[getMyProfile] error:', e);
     res.status(500).json({ error: 'Error fetching profile.' });
   }
 }
 
-export async function updateMyRole(req: Request, res: Response): Promise<void> {
+/**
+ * POST /users/me/roles
+ *
+ * Adds a role to the user's roles array (idempotent).
+ * Body: { role: UserRole }
+ */
+export async function addMyRole(req: Request, res: Response): Promise<void> {
   const { role } = req.body as { role: string };
 
   if (!role || !User.isValidRole(role)) {
@@ -81,13 +116,20 @@ export async function updateMyRole(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    const result = await User.updateRole(req.user.uid, role);
-    res.json({ message: 'Role updated.', ...result });
+    const result = await User.addRole(req.user.uid, role as User.UserRole);
+    res.json({ message: 'Role added.', ...result });
   } catch {
-    res.status(500).json({ error: 'Error updating role.' });
+    res.status(500).json({ error: 'Error updating roles.' });
   }
 }
 
+/**
+ * PUT /users/me/profile?role=<role>
+ *
+ * Updates the sub-profile for the given role.
+ * The `role` query param is required so the client is explicit about which
+ * profile it is updating when the user has multiple roles.
+ */
 export async function updateMyProfile(req: Request, res: Response): Promise<void> {
   const { profile } = req.body as { profile: unknown };
 
@@ -96,6 +138,8 @@ export async function updateMyProfile(req: Request, res: Response): Promise<void
     return;
   }
 
+  const requestedRole = req.query.role as string | undefined;
+
   try {
     const user = await User.findById(req.user.uid);
     if (!user) {
@@ -103,8 +147,21 @@ export async function updateMyProfile(req: Request, res: Response): Promise<void
       return;
     }
 
-    const profileData = await upsertProfileByRole(req.user.uid, user.role, profile as User.UserProfile);
-    res.json({ message: 'Profile updated.', profile: profileData });
+    // Determine which role's profile to update
+    let targetRole: User.UserRole;
+    if (requestedRole) {
+      if (!User.isValidRole(requestedRole)) {
+        res.status(400).json({ error: `Invalid role. Accepted values: ${User.VALID_ROLES.join(', ')}` });
+        return;
+      }
+      targetRole = requestedRole as User.UserRole;
+    } else {
+      // Fall back to primary role for backwards compatibility
+      targetRole = user.role;
+    }
+
+    const profileData = await upsertProfileByRole(req.user.uid, targetRole, profile as User.UserProfile);
+    res.json({ message: 'Profile updated.', role: targetRole, profile: profileData });
   } catch {
     res.status(500).json({ error: 'Error updating profile.' });
   }

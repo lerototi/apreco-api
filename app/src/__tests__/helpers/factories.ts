@@ -22,17 +22,23 @@ export const fakeTimestamp = new Date('2024-01-01T00:00:00.000Z') as unknown as
 
 /** Cria um UserDocument completo com valores padrão sobrescrevíveis */
 export function makeUser(overrides: Partial<UserDocument> = {}): UserDocument {
-  return {
+  const base: UserDocument = {
     id: 'uid-test-001',
     email: 'teste@apreco.com',
     displayName: 'Usuário Teste',
     photoURL: null,
     role: 'consumer',
+    roles: ['consumer'],
     createdAt: fakeTimestamp,
     updatedAt: fakeTimestamp,
     active: true,
     ...overrides,
   };
+  // Keep roles in sync with role if caller only sets role
+  if (overrides.role && !overrides.roles) {
+    base.roles = [overrides.role];
+  }
+  return base;
 }
 
 /** Cria um usuário com role 'ruralProducer' */
@@ -42,6 +48,19 @@ export function makeRuralProducer(overrides: Partial<UserDocument> = {}): UserDo
     email: 'produtor@apreco.com',
     displayName: 'João Produtor',
     role: 'ruralProducer',
+    roles: ['ruralProducer'],
+    ...overrides,
+  });
+}
+
+/** Cria um usuário com roles ['consumer', 'ruralProducer'] */
+export function makeMultiRoleUser(overrides: Partial<UserDocument> = {}): UserDocument {
+  return makeUser({
+    id: 'uid-multi-001',
+    email: 'multi@apreco.com',
+    displayName: 'Usuário Multi',
+    role: 'ruralProducer',
+    roles: ['consumer', 'ruralProducer'],
     ...overrides,
   });
 }
@@ -53,6 +72,7 @@ export function makeEstablishment(overrides: Partial<UserDocument> = {}): UserDo
     email: 'mercado@apreco.com',
     displayName: 'Mercado Central',
     role: 'establishment',
+    roles: ['establishment'],
     ...overrides,
   });
 }
@@ -147,6 +167,7 @@ export function makeRequest(overrides: Record<string, unknown> = {}) {
     user: makeDecodedToken(),
     body: {},
     params: {},
+    query: {},
     ...overrides,
   } as unknown as import('express').Request;
 }

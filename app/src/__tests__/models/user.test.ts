@@ -6,8 +6,8 @@
  *  - sanitizeProfile (consumer, ruralProducer, establishment)
  *  - toPublicProfile
  *  - createUser
- *  - findById
- *  - updateRole
+ *  - findById (inclui back-compat sem campo roles)
+ *  - addRole (idempotente, multi-role)
  */
 
 import { firestoreStore } from '../__mocks__/firebase-module';
@@ -18,14 +18,13 @@ import {
   toPublicProfile,
   createUser,
   findById,
-  updateRole,
+  addRole,
   VALID_ROLES,
 } from '../../models/user';
 
 import {
   makeUser,
-  makeRuralProducer,
-  makeEstablishment,
+  makeMultiRoleUser,
   makeConsumerProfile,
   makeRuralProducerProfile,
   makeEstablishmentProfile,
@@ -137,13 +136,28 @@ describe('toPublicProfile', () => {
     expect(pub).toHaveProperty('id');
     expect(pub).toHaveProperty('displayName');
     expect(pub).toHaveProperty('photoURL');
-    expect(pub).toHaveProperty('role');
+    expect(pub).toHaveProperty('roles');
     expect(pub).toHaveProperty('active');
   });
 
   it('preserva o id corretamente', () => {
     const user = makeUser({ id: 'uid-xyz' });
     expect(toPublicProfile(user).id).toBe('uid-xyz');
+  });
+
+  it('expõe todos os roles do usuário multi-role', () => {
+    const user = makeMultiRoleUser();
+    const pub = toPublicProfile(user);
+    expect(pub.roles).toContain('consumer');
+    expect(pub.roles).toContain('ruralProducer');
+  });
+
+  it('back-compat: sintetiza roles a partir de role quando roles está ausente', () => {
+    const user = makeUser({ id: 'uid-legacy' });
+    // simula doc legado sem campo roles
+    (user as any).roles = undefined;
+    const pub = toPublicProfile(user);
+    expect(pub.roles).toEqual(['consumer']);
   });
 });
 
@@ -154,6 +168,7 @@ describe('createUser', () => {
     const data = await createUser({ uid: 'uid-novo', email: 'novo@apreco.com', displayName: 'Novo' });
 
     expect(data.role).toBe('consumer');
+    expect(data.roles).toEqual(['consumer']);
     expect(data.active).toBe(true);
     expect(data.email).toBe('novo@apreco.com');
     expect(firestoreStore.has('users/uid-novo')).toBe(true);
@@ -182,19 +197,39 @@ describe('findById', () => {
     expect(result).not.toBeNull();
     expect(result!.id).toBe('uid-existe');
     expect(result!.email).toBe(user.email);
+    expect(result!.roles).toEqual(['consumer']);
+  });
+
+  it('back-compat: sintetiza roles quando campo está ausente no Firestore', async () => {
+    const user = makeUser({ id: 'uid-legacy' });
+    const { roles: _, ...userWithoutRoles } = user as any;
+    firestoreStore.set('users/uid-legacy', userWithoutRoles);
+
+    const result = await findById('uid-legacy');
+    expect(result!.roles).toEqual(['consumer']);
   });
 });
 
-// ─── updateRole ───────────────────────────────────────────────────────────────
+// ─── addRole ──────────────────────────────────────────────────────────────────
 
-describe('updateRole', () => {
-  it('atualiza o role no store', async () => {
-    const user = makeUser({ id: 'uid-role' });
-    firestoreStore.set('users/uid-role', user);
+describe('addRole', () => {
+  it('adiciona um role ao array existente', async () => {
+    const user = makeUser({ id: 'uid-add-role' });
+    firestoreStore.set('users/uid-add-role', user);
 
-    const result = await updateRole('uid-role', 'ruralProducer');
+    const result = await addRole('uid-add-role', 'ruralProducer');
 
-    expect(result.role).toBe('ruralProducer');
-    expect(firestoreStore.get('users/uid-role')!.role).toBe('ruralProducer');
+    expect(result.roles).toContain('consumer');
+    expect(result.roles).toContain('ruralProducer');
+  });
+
+  it('é idempotente — não duplica role já existente', async () => {
+    const user = makeUser({ id: 'uid-idem', roles: ['consumer', 'ruralProducer'] });
+    firestoreStore.set('users/uid-idem', user);
+
+    const result = await addRole('uid-idem', 'ruralProducer');
+
+    const count = result.roles.filter(r => r === 'ruralProducer').length;
+    expect(count).toBe(1);
   });
 });

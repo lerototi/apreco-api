@@ -3,17 +3,18 @@
  *
  * Cobre:
  *  - getMe: perfil encontrado, auto-criação, erro do Firestore
- *  - updateMyRole: role válido, role inválido, erro
- *  - updateMyProfile: perfil válido, body inválido, usuário não encontrado
+ *  - addMyRole: role válido, role inválido, idempotência
+ *  - updateMyProfile: perfil válido, role via query param, body inválido, usuário não encontrado
  *  - getById: encontrado, não encontrado, erro
  */
 
 import { firestoreStore, db as mockDb } from '../__mocks__/firebase-module';
 
-import { getMe, updateMyRole, updateMyProfile, getById } from '../../controllers/userController';
+import { getMe, addMyRole, updateMyProfile, getById } from '../../controllers/userController';
 import {
   makeUser,
   makeRuralProducer,
+  makeMultiRoleUser,
   makeRequest,
   makeResponse,
   makeConsumerProfile,
@@ -31,7 +32,7 @@ describe('getMe', () => {
     const user = makeUser({ id: 'uid-test-001' });
     firestoreStore.set('users/uid-test-001', user);
 
-    const req = makeRequest();           // req.user.uid === 'uid-test-001'
+    const req = makeRequest();
     const res = makeResponse();
 
     await getMe(req, res);
@@ -50,10 +51,10 @@ describe('getMe', () => {
     const returned = (res.json as jest.Mock).mock.calls[0][0];
     expect(returned).not.toBeNull();
     expect(returned.role).toBe('consumer');
+    expect(returned.roles).toEqual(['consumer']);
   });
 
   it('retorna 500 quando o Firestore lança erro', async () => {
-    // Sobrescreve o mock do doc para rejeitar
     const { db: mockDb } = await import('../__mocks__/firebase-module');
     mockDb.collection.mockReturnValueOnce({
       doc: jest.fn(() => ({
@@ -71,28 +72,45 @@ describe('getMe', () => {
   });
 });
 
-// ─── updateMyRole ─────────────────────────────────────────────────────────────
+// ─── addMyRole ────────────────────────────────────────────────────────────────
 
-describe('updateMyRole', () => {
-  it('atualiza para role válido', async () => {
+describe('addMyRole', () => {
+  it('adiciona role válido ao array de roles', async () => {
     const user = makeUser({ id: 'uid-test-001' });
     firestoreStore.set('users/uid-test-001', user);
 
     const req = makeRequest({ body: { role: 'ruralProducer' } });
     const res = makeResponse();
 
-    await updateMyRole(req, res);
+    await addMyRole(req, res);
 
     expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'Role updated.', role: 'ruralProducer' })
+      expect.objectContaining({ message: 'Role added.' })
     );
+    const returned = (res.json as jest.Mock).mock.calls[0][0];
+    expect(returned.roles).toContain('ruralProducer');
+    expect(returned.roles).toContain('consumer');
+  });
+
+  it('é idempotente — não duplica role já existente', async () => {
+    const user = makeUser({ id: 'uid-test-001', roles: ['consumer', 'ruralProducer'] });
+    firestoreStore.set('users/uid-test-001', user);
+
+    const req = makeRequest({ body: { role: 'ruralProducer' } });
+    const res = makeResponse();
+
+    await addMyRole(req, res);
+
+    const returned = (res.json as jest.Mock).mock.calls[0][0];
+    const count = returned.roles.filter((r: string) => r === 'ruralProducer').length;
+    expect(count).toBe(1);
   });
 
   it('retorna 400 para role inválido', async () => {
     const req = makeRequest({ body: { role: 'superadmin' } });
     const res = makeResponse();
 
-    await updateMyRole(req, res);
+    await addMyRole(req, res);
 
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith(
@@ -100,20 +118,11 @@ describe('updateMyRole', () => {
     );
   });
 
-  it('retorna 400 para role legado agricultor (não mais suportado)', async () => {
-    const req = makeRequest({ body: { role: 'agricultor' } });
-    const res = makeResponse();
-
-    await updateMyRole(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(400);
-  });
-
   it('retorna 400 quando role está ausente no body', async () => {
     const req = makeRequest({ body: {} });
     const res = makeResponse();
 
-    await updateMyRole(req, res);
+    await addMyRole(req, res);
 
     expect(res.status).toHaveBeenCalledWith(400);
   });
@@ -122,7 +131,7 @@ describe('updateMyRole', () => {
 // ─── updateMyProfile ──────────────────────────────────────────────────────────
 
 describe('updateMyProfile', () => {
-  it('atualiza perfil com dados válidos', async () => {
+  it('atualiza perfil consumer com role implícito (fallback)', async () => {
     const user = makeUser({ id: 'uid-test-001', role: 'consumer' });
     firestoreStore.set('users/uid-test-001', user);
 
@@ -133,7 +142,24 @@ describe('updateMyProfile', () => {
     await updateMyProfile(req, res);
 
     expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ message: 'Profile updated.' })
+      expect.objectContaining({ message: 'Profile updated.', role: 'consumer' })
+    );
+  });
+
+  it('atualiza perfil ruralProducer via query param ?role=ruralProducer', async () => {
+    const user = makeMultiRoleUser({ id: 'uid-test-001' });
+    firestoreStore.set('users/uid-test-001', user);
+
+    const req = makeRequest({
+      body: { profile: makeRuralProducerProfile({ nickname: 'ze_horta' }) },
+      query: { role: 'ruralProducer' },
+    });
+    const res = makeResponse();
+
+    await updateMyProfile(req, res);
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Profile updated.', role: 'ruralProducer' })
     );
   });
 
@@ -141,7 +167,10 @@ describe('updateMyProfile', () => {
     const user = makeRuralProducer({ id: 'uid-test-001' });
     firestoreStore.set('users/uid-test-001', user);
 
-    const req = makeRequest({ body: { profile: { ...makeRuralProducerProfile(), campoInvalido: 'hack' } } });
+    const req = makeRequest({
+      body: { profile: { ...makeRuralProducerProfile(), campoInvalido: 'hack' } },
+      query: { role: 'ruralProducer' },
+    });
     const res = makeResponse();
 
     await updateMyProfile(req, res);
@@ -186,6 +215,7 @@ describe('getById', () => {
 
     const returned = (res.json as jest.Mock).mock.calls[0][0];
     expect(returned.id).toBe('uid-publico');
+    expect(returned.roles).toEqual(['consumer']);
     expect(returned).not.toHaveProperty('email');
     expect(returned).not.toHaveProperty('createdAt');
   });
