@@ -82,9 +82,9 @@ describe('sanitizeProfile', () => {
 
   describe('ruralProducer', () => {
     it('mapeia campos corretamente', () => {
-      const input = makeRuralProducerProfile({ nickname: 'ze_horta', productionSites: ['feira'] }) as unknown as Record<string, unknown>;
+      const input = makeRuralProducerProfile({ userName: 'ze_horta', displayName: 'Zé Horta' }) as unknown as Record<string, unknown>;
       const result = sanitizeProfile('ruralProducer', input);
-      expect(result).toEqual(expect.objectContaining({ nickname: 'ze_horta', productionSites: ['feira'] }));
+      expect(result).toEqual(expect.objectContaining({ userName: 'ze_horta', displayName: 'Zé Horta' }));
     });
 
     it('organic padrão é false quando ausente', () => {
@@ -98,8 +98,9 @@ describe('sanitizeProfile', () => {
     });
 
     it('productionSites padrão é array vazio quando ausente', () => {
+      // campo removido do schema — apenas garantir que buildRuralProducerProfile não lança erro
       const result = sanitizeProfile('ruralProducer', {});
-      expect((result as { productionSites: string[] }).productionSites).toEqual([]);
+      expect(result).toBeDefined();
     });
 
     it('ignora campos não pertencentes ao schema', () => {

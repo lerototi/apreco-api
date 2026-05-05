@@ -91,19 +91,15 @@ export function makeConsumerProfile(overrides: Partial<ConsumerProfile> = {}): C
 
 export function makeRuralProducerProfile(overrides: Partial<RuralProducerProfile> = {}): RuralProducerProfile {
   return {
-    nickname: 'joao_horta',
+    userName: 'joao_horta',
+    displayName: 'João da Horta',
     bio: 'Produtor orgânico há 10 anos.',
     phone: '(11) 99999-0000',
     isWhatsApp: true,
-    farmName: 'Sítio Boa Esperança',
-    city: 'Campinas',
-    neighborhood: 'Barão Geraldo',
-    productionSites: ['Sítio principal', 'Horta urbana'],
     organic: true,
     certifications: ['IBD'],
     deliveryOptions: ['retirada', 'entrega'],
     instagram: 'joao_horta',
-    facebook: null,
     website: null,
     ...overrides,
   };
@@ -182,5 +178,24 @@ export function makeResponse() {
   return res as unknown as import('express').Response;
 }
 
-/** Roles de teste para cada tipo */
-export const TEST_ROLES: UserRole[] = ['consumer', 'ruralProducer', 'establishment'];
+import type { FarmProperty, FarmPropertyInput } from '../../models/farmProperty';
+
+export function makeFarmPropertyInput(overrides: Partial<FarmPropertyInput> = {}): FarmPropertyInput {
+  return {
+    name: 'Sítio Boa Esperança',
+    description: 'Produção de hortaliças orgânicas',
+    location: { latitude: -22.9035, longitude: -47.0628 },
+    photos: [],
+    ...overrides,
+  };
+}
+
+export function makeFarmProperty(overrides: Partial<FarmProperty> = {}): FarmProperty {
+  return {
+    id: 'prop-001',
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+    ...makeFarmPropertyInput(),
+    ...overrides,
+  };
+}

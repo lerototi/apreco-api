@@ -2,7 +2,10 @@
 const config = {
   testEnvironment: 'node',
   rootDir: '.',
+  roots: ['<rootDir>/src'],
   testMatch: ['<rootDir>/src/**/__tests__/**/*.test.ts'],
+  testPathIgnorePatterns: ['<rootDir>/lib/'],
+  modulePathIgnorePatterns: ['<rootDir>/lib/'],
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.test.json' }],
   },

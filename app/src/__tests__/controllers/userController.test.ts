@@ -151,7 +151,7 @@ describe('updateMyProfile', () => {
     firestoreStore.set('users/uid-test-001', user);
 
     const req = makeRequest({
-      body: { profile: makeRuralProducerProfile({ nickname: 'ze_horta' }) },
+      body: { profile: makeRuralProducerProfile({ userName: 'ze_horta' }) },
       query: { role: 'ruralProducer' },
     });
     const res = makeResponse();

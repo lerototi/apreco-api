@@ -17,11 +17,17 @@ export const firestoreStore: Map<string, Partial<UserDocument>> = new Map();
 
 const serverTimestamp = () => new Date('2024-01-01T00:00:00.000Z');
 
+/**
+ * arrayUnion marker — o makeDocRef.update resolve isso manualmente
+ * aplicando o merge real nos arrays do store.
+ */
+const arrayUnion = (...items: unknown[]) => ({ __arrayUnion: items });
+
 // ─── Mock do admin ────────────────────────────────────────────────────────────
 
 export const admin = {
   firestore: {
-    FieldValue: { serverTimestamp },
+    FieldValue: { serverTimestamp, arrayUnion },
   },
 };
 
@@ -36,9 +42,19 @@ const makeDocRef = (collection: string, docId: string) => ({
   set: jest.fn(async (data: Partial<UserDocument>) => {
     firestoreStore.set(`${collection}/${docId}`, { ...data });
   }),
-  update: jest.fn(async (data: Partial<UserDocument>) => {
-    const existing = firestoreStore.get(`${collection}/${docId}`) ?? {};
-    firestoreStore.set(`${collection}/${docId}`, { ...existing, ...data });
+  update: jest.fn(async (data: Record<string, unknown>) => {
+    const existing = (firestoreStore.get(`${collection}/${docId}`) ?? {}) as Record<string, unknown>;
+    const merged: Record<string, unknown> = { ...existing };
+    for (const [key, value] of Object.entries(data)) {
+      if (value && typeof value === 'object' && '__arrayUnion' in (value as object)) {
+        const items = (value as { __arrayUnion: unknown[] }).__arrayUnion;
+        const current = Array.isArray(merged[key]) ? (merged[key] as unknown[]) : [];
+        merged[key] = [...new Set([...current, ...items])];
+      } else {
+        merged[key] = value;
+      }
+    }
+    firestoreStore.set(`${collection}/${docId}`, merged as Partial<UserDocument>);
   }),
 });
 
