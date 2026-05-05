@@ -3,6 +3,8 @@ import { db } from '../../config/firebase';
 // ─── Interface ────────────────────────────────────────────────────────────────
 
 export interface RuralProducerProfile {
+  /** URL do avatar do perfil (por enquanto URL externa; futuramente upload) */
+  avatarUrl: string | null;
   /** Nome de usuário público único (ex: joao_horta) — equivalente ao @username do Instagram */
   userName: string | null;
   /** Nome de exibição do perfil (ex: João da Horta) */
@@ -31,6 +33,7 @@ type ProfileInput = Record<string, unknown>;
 
 export function buildRuralProducerProfile(p: ProfileInput): RuralProducerProfile {
   return {
+    avatarUrl: (p.avatarUrl as string) || null,
     userName: (p.userName as string) || null,
     displayName: (p.displayName as string) || null,
     bio: (p.bio as string) || null,
