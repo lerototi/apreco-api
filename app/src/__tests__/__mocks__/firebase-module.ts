@@ -5,65 +5,140 @@
  *
  * Os testes importam mockDb/mockAuth/firestoreStore daqui para
  * configurar e inspecionar o estado do Firestore fake.
+ *
+ * Suporta:
+ *  - Coleções simples:       db.collection('users').doc('uid')
+ *  - Subcoleções aninhadas:  db.collection('ruralProducers').doc('uid').collection('properties').doc('id')
+ *  - FieldValue.serverTimestamp, arrayUnion, arrayRemove
+ *  - CollectionRef.orderBy().get() para listagem
+ *  - CollectionRef.doc() sem id → gera ID aleatório (para create)
+ *  - DocumentRef.delete()
+ *  - DocumentRef.set(data, { merge: true })
  */
 
 import type { UserDocument } from '../../models/user';
 
 // ─── Armazenamento em memória ─────────────────────────────────────────────────
 
-export const firestoreStore: Map<string, Partial<UserDocument>> = new Map();
+/**
+ * Chave: caminho completo (ex: "users/uid-001", "ruralProducers/uid/properties/prop-001")
+ * Valor: qualquer objeto de documento
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const firestoreStore: Map<string, any> = new Map();
 
 // ─── FieldValue fake ──────────────────────────────────────────────────────────
 
 const serverTimestamp = () => new Date('2024-01-01T00:00:00.000Z');
-
-/**
- * arrayUnion marker — o makeDocRef.update resolve isso manualmente
- * aplicando o merge real nos arrays do store.
- */
 const arrayUnion = (...items: unknown[]) => ({ __arrayUnion: items });
+const arrayRemove = (...items: unknown[]) => ({ __arrayRemove: items });
 
 // ─── Mock do admin ────────────────────────────────────────────────────────────
 
 export const admin = {
   firestore: {
-    FieldValue: { serverTimestamp, arrayUnion },
+    FieldValue: { serverTimestamp, arrayUnion, arrayRemove },
   },
 };
 
 // ─── Helpers internos ─────────────────────────────────────────────────────────
 
-const makeDocRef = (collection: string, docId: string) => ({
-  id: docId,
-  get: jest.fn(async () => {
-    const data = firestoreStore.get(`${collection}/${docId}`);
-    return { exists: !!data, id: docId, data: () => data };
-  }),
-  set: jest.fn(async (data: Partial<UserDocument>) => {
-    firestoreStore.set(`${collection}/${docId}`, { ...data });
-  }),
-  update: jest.fn(async (data: Record<string, unknown>) => {
-    const existing = (firestoreStore.get(`${collection}/${docId}`) ?? {}) as Record<string, unknown>;
-    const merged: Record<string, unknown> = { ...existing };
-    for (const [key, value] of Object.entries(data)) {
-      if (value && typeof value === 'object' && '__arrayUnion' in (value as object)) {
+/** Aplica markers de arrayUnion / arrayRemove durante update/set-merge */
+function applyArrayMarkers(
+  existing: Record<string, unknown>,
+  incoming: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...existing };
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value && typeof value === 'object') {
+      if ('__arrayUnion' in (value as object)) {
         const items = (value as { __arrayUnion: unknown[] }).__arrayUnion;
         const current = Array.isArray(merged[key]) ? (merged[key] as unknown[]) : [];
         merged[key] = [...new Set([...current, ...items])];
-      } else {
-        merged[key] = value;
+        continue;
+      }
+      if ('__arrayRemove' in (value as object)) {
+        const items = (value as { __arrayRemove: unknown[] }).__arrayRemove;
+        const current = Array.isArray(merged[key]) ? (merged[key] as unknown[]) : [];
+        merged[key] = current.filter((x) => !items.includes(x));
+        continue;
       }
     }
-    firestoreStore.set(`${collection}/${docId}`, merged as Partial<UserDocument>);
-  }),
-});
+    merged[key] = value;
+  }
+  return merged;
+}
+
+/** Cria um DocumentRef fake para um caminho completo */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function makeDocRef(fullPath: string, docId: string): any {
+  return {
+    id: docId,
+
+    get: jest.fn(async () => {
+      const data = firestoreStore.get(fullPath);
+      return { exists: !!data, id: docId, data: () => data };
+    }),
+
+    set: jest.fn(async (data: Record<string, unknown>, options?: { merge?: boolean }) => {
+      if (options?.merge) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const existing: any = firestoreStore.get(fullPath) ?? {};
+        firestoreStore.set(fullPath, applyArrayMarkers(existing, data));
+      } else {
+        firestoreStore.set(fullPath, { ...data });
+      }
+    }),
+
+    update: jest.fn(async (data: Record<string, unknown>) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const existing: any = firestoreStore.get(fullPath) ?? {};
+      firestoreStore.set(fullPath, applyArrayMarkers(existing, data));
+    }),
+
+    delete: jest.fn(async () => {
+      firestoreStore.delete(fullPath);
+    }),
+
+    /** Permite encadear subcoleções: docRef.collection('sub') */
+    collection: jest.fn((subCol: string) => makeCollectionRef(`${fullPath}/${subCol}`)),
+  };
+}
+
+/** Cria um CollectionRef fake para um caminho de coleção */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function makeCollectionRef(colPath: string): any {
+  return {
+    /**
+     * doc(id?) → DocumentRef
+     * Se id não fornecido, gera um ID aleatório (comportamento do Firestore real)
+     */
+    doc: jest.fn((id?: string) => {
+      const docId = id ?? `auto-${Math.random().toString(36).slice(2, 10)}`;
+      return makeDocRef(`${colPath}/${docId}`, docId);
+    }),
+
+    /** orderBy — retorna o mesmo CollectionRef (fluent, sem ordenação real no mock) */
+    orderBy: jest.fn(() => makeCollectionRef(colPath)),
+
+    /** get — retorna todos os docs cujo caminho começa com colPath/ */
+    get: jest.fn(async () => {
+      const prefix = `${colPath}/`;
+      const docs = [...firestoreStore.entries()]
+        .filter(([key]) => key.startsWith(prefix) && !key.slice(prefix.length).includes('/'))
+        .map(([key, data]) => {
+          const docId = key.slice(prefix.length);
+          return { id: docId, data: () => data, exists: true };
+        });
+      return { docs, empty: docs.length === 0 };
+    }),
+  };
+}
 
 // ─── Mock do db (Firestore) ───────────────────────────────────────────────────
 
 export const db = {
-  collection: jest.fn((col: string) => ({
-    doc: jest.fn((id: string) => makeDocRef(col, id)),
-  })),
+  collection: jest.fn((col: string) => makeCollectionRef(col)),
 };
 
 // ─── Mock do auth ─────────────────────────────────────────────────────────────
