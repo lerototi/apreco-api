@@ -107,6 +107,25 @@ export async function listProducerProducts(producerUid: string): Promise<Produce
   return snap.docs.map(d => ({ id: d.id, ...d.data() } as ProducerProduct));
 }
 
+/**
+ * Lista todos os produtos ativos de todos os produtores (marketplace público).
+ * Usa collectionGroup para varrer ruralProducers/{uid}/products em paralelo.
+ * Cada produto recebe o campo `producerUid` extraído do path do documento.
+ */
+export async function listAllActiveProducts(): Promise<(ProducerProduct & { producerUid: string })[]> {
+  const snap = await db
+    .collectionGroup('products')
+    .where('active', '==', true)
+    .orderBy('createdAt', 'desc')
+    .get();
+
+  return snap.docs.map(d => {
+    // path: ruralProducers/{producerUid}/products/{productId}
+    const producerUid = d.ref.parent.parent?.id ?? '';
+    return { id: d.id, producerUid, ...d.data() } as ProducerProduct & { producerUid: string };
+  });
+}
+
 export async function findProducerProduct(
   producerUid: string,
   productId: string,

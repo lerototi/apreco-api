@@ -66,3 +66,12 @@ export async function updateRuralProducerProfile(uid: string, data: RuralProduce
   await db.collection(COLLECTION).doc(uid).set(data, { merge: true });
   return data;
 }
+
+/**
+ * Lista todos os perfis de produtor rural (marketplace público).
+ * Retorna uid + campos do perfil.
+ */
+export async function listAllProducers(): Promise<(RuralProducerProfile & { uid: string })[]> {
+  const snap = await db.collection(COLLECTION).get();
+  return snap.docs.map(d => ({ uid: d.id, ...(d.data() as RuralProducerProfile) }));
+}
