@@ -91,6 +91,7 @@ export function makeConsumerProfile(overrides: Partial<ConsumerProfile> = {}): C
 
 export function makeRuralProducerProfile(overrides: Partial<RuralProducerProfile> = {}): RuralProducerProfile {
   return {
+    avatarUrl: null,
     userName: 'joao_horta',
     displayName: 'João da Horta',
     bio: 'Produtor orgânico há 10 anos.',
@@ -107,7 +108,10 @@ export function makeRuralProducerProfile(overrides: Partial<RuralProducerProfile
 
 export function makeEstablishmentProfile(overrides: Partial<EstablishmentProfile> = {}): EstablishmentProfile {
   return {
+    avatarUrl: null,
+    userName: null,
     phone: '(11) 3000-0000',
+    isWhatsApp: false,
     businessName: 'Mercado Central',
     cnpj: '12.345.678/0001-90',
     address: 'Rua das Feiras, 100',
@@ -115,7 +119,10 @@ export function makeEstablishmentProfile(overrides: Partial<EstablishmentProfile
     state: 'SP',
     bio: null,
     businessType: 'mercado',
+    instagram: null,
+    website: null,
     recurringNeeds: ['verduras', 'frutas'],
+    linkedProducerIds: [],
     ...overrides,
   };
 }
@@ -179,6 +186,8 @@ export function makeResponse() {
 }
 
 import type { FarmProperty, FarmPropertyInput } from '../../models/farmProperty';
+import type { EstablishmentDemand } from '../../models/establishmentDemand';
+import type { DemandOffer } from '../../models/demandOffer';
 
 export function makeFarmPropertyInput(overrides: Partial<FarmPropertyInput> = {}): FarmPropertyInput {
   return {
@@ -196,6 +205,52 @@ export function makeFarmProperty(overrides: Partial<FarmProperty> = {}): FarmPro
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-01T00:00:00.000Z',
     ...makeFarmPropertyInput(),
+    ...overrides,
+  };
+}
+
+// ─── Demand factories ─────────────────────────────────────────────────────────
+
+export function makeEstablishmentDemand(overrides: Partial<EstablishmentDemand> = {}): EstablishmentDemand {
+  return {
+    id: 'demand-001',
+    establishmentUid: 'uid-test-001',
+    establishmentName: 'Mercado Central',
+    productName: 'Tomate Cereja Orgânico',
+    category: 'hortalicas',
+    quantityNeeded: 20,
+    unit: 'kg',
+    maxPricePerUnit: 12.00,
+    deadline: '2099-12-31',
+    deliveryLocation: {
+      displayName: 'Mercado Central',
+      city: 'São Paulo',
+      state: 'SP',
+      coords: null,
+      placeId: null,
+    },
+    notes: null,
+    status: 'open',
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+// ─── Offer factories ──────────────────────────────────────────────────────────
+
+export function makeDemandOffer(overrides: Partial<DemandOffer> = {}): DemandOffer {
+  return {
+    id: 'offer-001',
+    demandId: 'demand-001',
+    producerUid: 'uid-producer-001',
+    producerName: 'Sítio Raízes Vivas',
+    quantity: 20,
+    pricePerUnit: 10.00,
+    message: 'Oferta de teste',
+    status: 'pending',
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
     ...overrides,
   };
 }

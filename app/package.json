@@ -16,11 +16,14 @@
     "tunnel:ts": "ts-node --transpile-only -r dotenv/config src/dev-tunnel.ts dotenv_config_path=.env",
     "serve": "npm run build && firebase emulators:start --only functions,firestore",
     "deploy": "npm run build && firebase deploy --only functions",
+    "deploy:indexes": "firebase deploy --only firestore:indexes --project apreco-app-br",
     "deploy:rules": "firebase deploy --only firestore:rules",
     "logs": "firebase functions:log",
     "test": "jest --config jest.config.js",
     "test:watch": "jest --config jest.config.js --watch",
-    "test:coverage": "jest --config jest.config.js --coverage"
+    "test:coverage": "jest --config jest.config.js --coverage",
+    "seed:marketplace": "ts-node -r dotenv/config --project tsconfig.json src/scripts/seed-marketplace.ts",
+    "seed:demands": "ts-node -r dotenv/config --project tsconfig.json src/scripts/seed-demands.ts"
   },
   "keywords": [],
   "author": "",

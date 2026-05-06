@@ -107,7 +107,30 @@ function makeDocRef(fullPath: string, docId: string): any {
 
 /** Cria um CollectionRef fake para um caminho de coleção */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function makeCollectionRef(colPath: string): any {
+function makeCollectionRef(colPath: string, whereFilters: Array<{ field: string; op: string; value: unknown }> = []): any {
+  // Apply in-memory where filters to get filtered docs
+  function getFilteredDocs() {
+    const prefix = `${colPath}/`;
+    return [...firestoreStore.entries()]
+      .filter(([key]) => key.startsWith(prefix) && !key.slice(prefix.length).includes('/'))
+      .filter(([, data]) =>
+        whereFilters.every(({ field, op, value }) => {
+          const fieldVal = (data as Record<string, unknown>)[field];
+          if (op === '==') return fieldVal === value;
+          if (op === '!=') return fieldVal !== value;
+          if (op === '>') return (fieldVal as number) > (value as number);
+          if (op === '>=') return (fieldVal as number) >= (value as number);
+          if (op === '<') return (fieldVal as number) < (value as number);
+          if (op === '<=') return (fieldVal as number) <= (value as number);
+          return true;
+        }),
+      )
+      .map(([key, data]) => {
+        const docId = key.slice(prefix.length);
+        return { id: docId, data: () => data, exists: true };
+      });
+  }
+
   return {
     /**
      * doc(id?) → DocumentRef
@@ -118,18 +141,17 @@ function makeCollectionRef(colPath: string): any {
       return makeDocRef(`${colPath}/${docId}`, docId);
     }),
 
-    /** orderBy — retorna o mesmo CollectionRef (fluent, sem ordenação real no mock) */
-    orderBy: jest.fn(() => makeCollectionRef(colPath)),
+    /** where — retorna um novo CollectionRef com o filtro acumulado */
+    where: jest.fn((field: string, op: string, value: unknown) =>
+      makeCollectionRef(colPath, [...whereFilters, { field, op, value }]),
+    ),
 
-    /** get — retorna todos os docs cujo caminho começa com colPath/ */
+    /** orderBy — retorna o mesmo CollectionRef (fluent, sem ordenação real no mock) */
+    orderBy: jest.fn(() => makeCollectionRef(colPath, whereFilters)),
+
+    /** get — retorna docs filtrados */
     get: jest.fn(async () => {
-      const prefix = `${colPath}/`;
-      const docs = [...firestoreStore.entries()]
-        .filter(([key]) => key.startsWith(prefix) && !key.slice(prefix.length).includes('/'))
-        .map(([key, data]) => {
-          const docId = key.slice(prefix.length);
-          return { id: docId, data: () => data, exists: true };
-        });
+      const docs = getFilteredDocs();
       return { docs, empty: docs.length === 0 };
     }),
   };
@@ -139,6 +161,45 @@ function makeCollectionRef(colPath: string): any {
 
 export const db = {
   collection: jest.fn((col: string) => makeCollectionRef(col)),
+  /** collectionGroup — busca subcoleções em qualquer profundidade */
+  collectionGroup: jest.fn((subColName: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filters: Array<{ field: string; op: string; value: unknown }> = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function makeGroupRef(activeFilters: typeof filters): any {
+      function getGroupDocs() {
+        return [...firestoreStore.entries()]
+          .filter(([key]) => {
+            const parts = key.split('/');
+            return parts[parts.length - 2] === subColName;
+          })
+          .filter(([, data]) =>
+            activeFilters.every(({ field, op, value }) => {
+              const fieldVal = (data as Record<string, unknown>)[field];
+              if (op === '==') return fieldVal === value;
+              if (op === '!=') return fieldVal !== value;
+              return true;
+            }),
+          )
+          .map(([key, data]) => {
+            const parts = key.split('/');
+            const docId = parts[parts.length - 1];
+            return { id: docId, data: () => data, exists: true };
+          });
+      }
+      return {
+        where: jest.fn((field: string, op: string, value: unknown) =>
+          makeGroupRef([...activeFilters, { field, op, value }]),
+        ),
+        orderBy: jest.fn(() => makeGroupRef(activeFilters)),
+        get: jest.fn(async () => {
+          const docs = getGroupDocs();
+          return { docs, empty: docs.length === 0 };
+        }),
+      };
+    }
+    return makeGroupRef(filters);
+  }),
 };
 
 // ─── Mock do auth ─────────────────────────────────────────────────────────────

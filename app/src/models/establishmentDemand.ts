@@ -81,6 +81,8 @@ const VALID_CATEGORIES: DemandCategory[] = [
 
 const VALID_UNITS: DemandUnit[] = ['kg', 'g', 'ton', 'L', 'mL', 'unidade', 'caixa', 'saco', 'fardo'];
 
+export { VALID_CATEGORIES, VALID_UNITS };
+
 const VALID_STATUSES: DemandStatus[] = ['open', 'negotiating', 'closed', 'cancelled'];
 
 export function buildDemandInput(p: RawInput): EstablishmentDemandInput {
@@ -195,7 +197,7 @@ export async function cancelDemand(
     const existing = await findDemand(demandId);
     if (!existing) throw new Error('Demand not found.');
     if (existing.establishmentUid !== establishmentUid) throw new Error('Forbidden.');
-    if (existing.status === 'closed') throw new Error('Cannot cancel a closed demand.');
+    if (existing.status === 'closed' || existing.status === 'cancelled') throw new Error('Cannot cancel a closed demand.');
 
     await demandsCol().doc(demandId).update({
         status: 'cancelled',
