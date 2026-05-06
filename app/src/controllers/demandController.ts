@@ -106,8 +106,8 @@ export async function createMyDemand(req: Request, res: Response): Promise<void>
             res.status(400).json({ error: 'quantityNeeded deve ser maior que zero.' });
             return;
         }
-        if (!input.deadline) {
-            res.status(400).json({ error: 'deadline é obrigatório.' });
+        if (!input.isRecurring && !input.deadline) {
+            res.status(400).json({ error: 'deadline é obrigatório para solicitações pontuais.' });
             return;
         }
         if (!input.deliveryLocation.city || !input.deliveryLocation.state) {

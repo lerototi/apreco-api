@@ -221,6 +221,7 @@ export function makeEstablishmentDemand(overrides: Partial<EstablishmentDemand> 
     quantityNeeded: 20,
     unit: 'kg',
     maxPricePerUnit: 12.00,
+    isRecurring: false,
     deadline: '2099-12-31',
     deliveryLocation: {
       displayName: 'Mercado Central',

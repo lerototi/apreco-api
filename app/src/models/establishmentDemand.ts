@@ -59,7 +59,13 @@ export interface EstablishmentDemand {
     unit: DemandUnit;
     /** Preço máximo por unidade — null se não informado */
     maxPricePerUnit: number | null;
-    deadline: string;        // ISO date string YYYY-MM-DD
+    /**
+     * true  → necessidade contínua; sem prazo; visível indefinidamente
+     * false → compra pontual; some do marketplace após `deadline`
+     */
+    isRecurring: boolean;
+    /** ISO date YYYY-MM-DD — obrigatório apenas quando isRecurring = false */
+    deadline: string | null;
     deliveryLocation: DeliveryLocation;
     notes: string | null;
     status: DemandStatus;
@@ -101,9 +107,11 @@ export function buildDemandInput(p: RawInput): EstablishmentDemandInput {
         displayName: ((rawLoc.displayName as string) || '').trim(),
         city:        ((rawLoc.city        as string) || '').trim(),
         state:       ((rawLoc.state       as string) || '').toUpperCase().slice(0, 2),
-        coords:      null,   // preenchido pela camada de GPS quando disponível
+        coords:      null,
         placeId:     typeof rawLoc.placeId === 'string' ? rawLoc.placeId : null,
     };
+
+    const isRecurring = p.isRecurring === true;
 
     return {
         productName:     ((p.productName as string) || '').trim(),
@@ -112,7 +120,8 @@ export function buildDemandInput(p: RawInput): EstablishmentDemandInput {
                             ? p.quantityNeeded : 0,
         unit,
         maxPricePerUnit: typeof p.maxPricePerUnit === 'number' ? p.maxPricePerUnit : null,
-        deadline:        typeof p.deadline === 'string' ? p.deadline : '',
+        isRecurring,
+        deadline:        isRecurring ? null : (typeof p.deadline === 'string' ? p.deadline : null),
         deliveryLocation,
         notes:           typeof p.notes === 'string' && p.notes.trim() ? p.notes.trim() : null,
     };
@@ -137,11 +146,22 @@ export async function listDemandsByEstablishment(
 }
 
 export async function listOpenDemands(): Promise<EstablishmentDemand[]> {
-    const snap = await demandsCol()
-        .where('status', '==', 'open')
-        .orderBy('deadline', 'asc')
-        .get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as EstablishmentDemand));
+    // Recorrentes não têm deadline — buscadas separadamente e mescladas no topo
+    const [recurringSnap, pontualSnap] = await Promise.all([
+        demandsCol()
+            .where('status', '==', 'open')
+            .where('isRecurring', '==', true)
+            .orderBy('createdAt', 'desc')
+            .get(),
+        demandsCol()
+            .where('status', '==', 'open')
+            .where('isRecurring', '==', false)
+            .orderBy('deadline', 'asc')
+            .get(),
+    ]);
+    const recurring = recurringSnap.docs.map(d => ({ id: d.id, ...d.data() } as EstablishmentDemand));
+    const pontual   = pontualSnap.docs.map(d => ({ id: d.id, ...d.data() } as EstablishmentDemand));
+    return [...recurring, ...pontual];
 }
 
 export async function findDemand(demandId: string): Promise<EstablishmentDemand | null> {
