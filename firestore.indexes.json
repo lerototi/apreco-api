@@ -26,13 +26,6 @@
     },
     {
       "collectionGroup": "offers",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "createdAt", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "offers",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
         { "fieldPath": "producerUid", "order": "ASCENDING" },
@@ -45,14 +38,6 @@
       "fields": [
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "ASCENDING" }
-      ]
-    }
-    {
-      "collectionGroup": "offers",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        { "fieldPath": "producerUid", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     }
   ],
