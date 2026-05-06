@@ -5,6 +5,7 @@ import * as farmPropertyController from '../controllers/farmPropertyController';
 import * as establishmentController from '../controllers/establishmentController';
 import * as producerProductController from '../controllers/producerProductController';
 import * as producerInputController from '../controllers/producerInputController';
+import * as favoritesController from '../controllers/favoritesController';
 
 const router = Router();
 
@@ -35,6 +36,11 @@ router.get('/me/inputs',                    authenticate, producerInputControlle
 router.post('/me/inputs',                   authenticate, producerInputController.createMyInput);
 router.put('/me/inputs/:inputId',           authenticate, producerInputController.updateMyInput);
 router.delete('/me/inputs/:inputId',        authenticate, producerInputController.deleteMyInput);
+
+// ─── Favoritos do consumidor ──────────────────────────────────────────────────
+router.get('/me/favorites',                       authenticate, favoritesController.getFavorites);
+router.post('/me/favorites/:productId',           authenticate, favoritesController.addToFavorites);
+router.delete('/me/favorites/:productId',         authenticate, favoritesController.removeFromFavorites);
 
 router.get('/:id',                                 authenticate, userController.getById);
 

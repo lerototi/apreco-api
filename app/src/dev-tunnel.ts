@@ -15,7 +15,10 @@ import { exec, ChildProcess } from 'child_process';
 import app from './server';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-const FRONTEND_ENV = path.resolve(__dirname, '../../../apreco/.env');
+
+// Funciona tanto com ts-node (src/) quanto com node (lib/)
+// Ambos ficam dentro de apreco-api/app/, então subimos 3 níveis até apreco/
+const FRONTEND_ENV = path.resolve(__dirname, '..', '..', '..', 'apreco', '.env');
 
 // ─── Inicia o servidor Express ───────────────────────────────────────────────
 const server = app.listen(PORT, () => {
