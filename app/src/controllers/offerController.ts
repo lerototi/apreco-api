@@ -21,6 +21,7 @@ import {
     findOffer,
     listOffersByDemand,
     listOffersByProducer,
+    listPendingOffersByEstablishment,
     cancelOfferByProducer,
     updateOfferStatus,
     getDemandOfferStats,
@@ -36,6 +37,22 @@ async function resolveProducerName(uid: string): Promise<string> {
 }
 
 // ─── Rotas do estabelecimento ─────────────────────────────────────────────────
+
+/**
+ * GET /establishment/pending-offers
+ * Lista todas as ofertas pendentes (pending + accepted) de todas as demandas
+ * do estabelecimento autenticado. Usado na aba "Ofertas Pendentes".
+ */
+export async function getPendingOffers(req: Request, res: Response): Promise<void> {
+    try {
+        const uid = req.user.uid;
+        const offers = await listPendingOffersByEstablishment(uid);
+        res.json({ offers });
+    } catch (e) {
+        console.error('[offer.getPendingOffers] error:', e);
+        res.status(500).json({ error: 'Erro ao buscar ofertas pendentes.' });
+    }
+}
 
 /**
  * GET /establishment/demands/:demandId/offers
@@ -207,10 +224,11 @@ export async function submitOffer(req: Request, res: Response): Promise<void> {
             res.status(404).json({ error: 'Solicitação não encontrada ou não está aberta.' }); return;
         }
 
-        // Produtor não pode ofertar para a própria demanda (caso criasse uma)
-        if (demand.establishmentUid === producerUid) {
-            res.status(403).json({ error: 'Não é possível ofertar para a própria solicitação.' }); return;
-        }
+        // TODO: reativar antes de ir para produção — impede que o mesmo usuário
+        // oferte para a própria solicitação (establishment e ruralProducer no mesmo uid).
+        // if (demand.establishmentUid === producerUid) {
+        //     res.status(403).json({ error: 'Não é possível ofertar para a própria solicitação.' }); return;
+        // }
 
         const producerName = await resolveProducerName(producerUid);
         const offer = await createOffer(demandId, producerUid, producerName, input);

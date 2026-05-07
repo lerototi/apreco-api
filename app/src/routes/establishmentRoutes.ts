@@ -12,6 +12,7 @@
  *   DELETE /establishment/demands/:demandId                          → cancela demanda
  *
  * Ofertas (visão do estabelecimento):
+ *   GET    /establishment/pending-offers                             → todas ofertas pending/accepted cross-demands
  *   GET    /establishment/demands/:demandId/offers                   → lista ofertas da demanda
  *   GET    /establishment/demands/:demandId/offers/:offerId          → detalhe de oferta
  *   POST   /establishment/demands/:demandId/offers/:offerId/accept   → aceita negociação
@@ -34,6 +35,7 @@ router.put('/demands/:demandId',    authenticate, demandController.updateMyDeman
 router.delete('/demands/:demandId', authenticate, demandController.cancelMyDemand);
 
 // ─── Ofertas (visão do estabelecimento) ───────────────────────────────────────
+router.get('/pending-offers',                               authenticate, offerController.getPendingOffers);
 router.get('/demands/:demandId/offers',                     authenticate, offerController.getOffersForDemand);
 router.get('/demands/:demandId/offers/:offerId',            authenticate, offerController.getOfferDetail);
 router.post('/demands/:demandId/offers/:offerId/accept',    authenticate, offerController.acceptOffer);

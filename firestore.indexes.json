@@ -12,16 +12,26 @@
       "collectionGroup": "establishmentDemands",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "deadline", "order": "ASCENDING" }
+        { "fieldPath": "establishmentUid", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
     {
       "collectionGroup": "establishmentDemands",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "establishmentUid", "order": "ASCENDING" },
+        { "fieldPath": "isRecurring", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "establishmentDemands",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isRecurring", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "deadline", "order": "ASCENDING" }
       ]
     },
     {

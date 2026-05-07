@@ -85,6 +85,57 @@ export async function listOffersByProducer(producerUid: string): Promise<DemandO
     return snap.docs.map(d => ({ id: d.id, ...d.data() } as DemandOffer));
 }
 
+/**
+ * Lista todas as ofertas com status 'pending' ou 'accepted' de um estabelecimento,
+ * buscando em todas as suas demandas via collectionGroup.
+ * Retorna também o nome do insumo e a demandId para exibição na tela.
+ */
+export async function listPendingOffersByEstablishment(
+    establishmentUid: string,
+): Promise<(DemandOffer & { demandProductName: string })[]> {
+    // Busca demandas do estabelecimento para cruzar com as ofertas
+    const demandsSnap = await db
+        .collection('establishmentDemands')
+        .where('establishmentUid', '==', establishmentUid)
+        .get();
+
+    if (demandsSnap.empty) return [];
+
+    const demandMap = new Map<string, string>(); // demandId → productName
+    for (const doc of demandsSnap.docs) {
+        demandMap.set(doc.id, (doc.data().productName as string) ?? '');
+    }
+
+    // Busca ofertas pending e accepted de todas as demandas do estabelecimento em paralelo
+    const queries = demandsSnap.docs.map(doc =>
+        offersCol(doc.id)
+            .where('status', 'in', ['pending', 'accepted'])
+            .orderBy('createdAt', 'asc')
+            .get()
+    );
+    const snaps = await Promise.all(queries);
+
+    const results: (DemandOffer & { demandProductName: string })[] = [];
+    for (const snap of snaps) {
+        for (const doc of snap.docs) {
+            const offer = { id: doc.id, ...doc.data() } as DemandOffer;
+            results.push({
+                ...offer,
+                demandProductName: demandMap.get(offer.demandId) ?? '',
+            });
+        }
+    }
+
+    // Ordena pending primeiro, depois accepted; dentro de cada grupo: mais antigas primeiro
+    const ORDER = { pending: 0, accepted: 1, confirmed: 2, rejected: 3, cancelled: 4 };
+    results.sort((a, b) =>
+        (ORDER[a.status] - ORDER[b.status]) ||
+        a.createdAt.localeCompare(b.createdAt)
+    );
+
+    return results;
+}
+
 export async function findOffer(demandId: string, offerId: string): Promise<DemandOffer | null> {
     const doc = await offersCol(demandId).doc(offerId).get();
     if (!doc.exists) return null;
