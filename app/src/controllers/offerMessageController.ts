@@ -168,6 +168,9 @@ export async function estGetChatThreads(req: Request, res: Response): Promise<vo
                     lastMessageAt:     lastMsg?.createdAt ?? null,
                     unreadCount:       unread,
                     offerStatus:       offer.status,
+                    offerPricePerUnit: offer.pricePerUnit,
+                    offerQuantity:     offer.quantity,
+                    offerUnit:         demand?.unit ?? 'un',
                 };
             })
         );
@@ -305,6 +308,9 @@ export async function producerGetChatThreads(req: Request, res: Response): Promi
                     lastMessageAt:     lastMsg?.createdAt ?? null,
                     unreadCount:       unread,
                     offerStatus:       offer.status,
+                    offerPricePerUnit: offer.pricePerUnit,
+                    offerQuantity:     offer.quantity,
+                    offerUnit:         demand?.unit ?? 'un',
                 };
             })
         );
