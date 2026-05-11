@@ -2,16 +2,17 @@
  * offerController — gerencia ofertas de produtores para demandas de insumos.
  *
  * Rotas do estabelecimento (autenticado, requer perfil establishment):
- *   GET    /establishment/demands/:demandId/offers          → lista todas as ofertas
- *   GET    /establishment/demands/:demandId/offers/:offerId → detalhe de uma oferta
- *   POST   /establishment/demands/:demandId/offers/:offerId/accept  → aceita negociação
- *   POST   /establishment/demands/:demandId/offers/:offerId/reject  → recusa oferta
- *   POST   /establishment/demands/:demandId/offers/:offerId/confirm → confirma (fecha negócio)
+ *   GET    /establishment/pending-offers                → lista todas as ofertas pending/accepted
+ *   GET    /establishment/demands/:demandId/offers      → lista ofertas de uma demanda
+ *   GET    /establishment/offers/:offerId               → detalhe de uma oferta
+ *   POST   /establishment/offers/:offerId/accept        → aceita negociação
+ *   POST   /establishment/offers/:offerId/reject        → recusa oferta
+ *   POST   /establishment/offers/:offerId/confirm       → confirma (fecha negócio)
  *
- * Rotas do produtor (autenticado, qualquer perfil):
- *   POST   /marketplace/demands/:demandId/offers            → cria oferta
- *   DELETE /marketplace/demands/:demandId/offers/:offerId   → cancela própria oferta
- *   GET    /marketplace/my-offers                           → lista próprias ofertas
+ * Rotas do produtor (autenticado):
+ *   POST   /marketplace/demands/:demandId/offers        → cria oferta
+ *   DELETE /marketplace/offers/:offerId                 → cancela própria oferta
+ *   GET    /marketplace/my-offers                       → lista próprias ofertas
  */
 
 import { Request, Response } from 'express';
@@ -41,7 +42,7 @@ async function resolveProducerName(uid: string): Promise<string> {
 /**
  * GET /establishment/pending-offers
  * Lista todas as ofertas pendentes (pending + accepted) de todas as demandas
- * do estabelecimento autenticado. Usado na aba "Ofertas Pendentes".
+ * do estabelecimento autenticado.
  */
 export async function getPendingOffers(req: Request, res: Response): Promise<void> {
     try {
@@ -81,20 +82,19 @@ export async function getOffersForDemand(req: Request, res: Response): Promise<v
 }
 
 /**
- * GET /establishment/demands/:demandId/offers/:offerId
+ * GET /establishment/offers/:offerId
  */
 export async function getOfferDetail(req: Request, res: Response): Promise<void> {
     try {
         const uid = req.user.uid;
-        const demandId = req.params['demandId'] as string;
-        const offerId  = req.params['offerId']  as string;
+        const offerId = req.params['offerId'] as string;
 
-        const demand = await findDemand(demandId);
+        const offer = await findOffer(offerId);
+        if (!offer) { res.status(404).json({ error: 'Oferta não encontrada.' }); return; }
+
+        const demand = await findDemand(offer.demandId);
         if (!demand) { res.status(404).json({ error: 'Solicitação não encontrada.' }); return; }
         if (demand.establishmentUid !== uid) { res.status(403).json({ error: 'Acesso negado.' }); return; }
-
-        const offer = await findOffer(demandId, offerId);
-        if (!offer) { res.status(404).json({ error: 'Oferta não encontrada.' }); return; }
 
         res.json({ offer });
     } catch (e) {
@@ -104,29 +104,29 @@ export async function getOfferDetail(req: Request, res: Response): Promise<void>
 }
 
 /**
- * POST /establishment/demands/:demandId/offers/:offerId/accept
+ * POST /establishment/offers/:offerId/accept
  * Establishment aceita iniciar negociação com o produtor.
  * Demanda passa para status 'negotiating'.
  */
 export async function acceptOffer(req: Request, res: Response): Promise<void> {
     try {
         const uid = req.user.uid;
-        const demandId = req.params['demandId'] as string;
-        const offerId  = req.params['offerId']  as string;
+        const offerId = req.params['offerId'] as string;
 
-        const demand = await findDemand(demandId);
+        const offer = await findOffer(offerId);
+        if (!offer) { res.status(404).json({ error: 'Oferta não encontrada.' }); return; }
+
+        const demand = await findDemand(offer.demandId);
         if (!demand) { res.status(404).json({ error: 'Solicitação não encontrada.' }); return; }
         if (demand.establishmentUid !== uid) { res.status(403).json({ error: 'Acesso negado.' }); return; }
 
-        const offer = await findOffer(demandId, offerId);
-        if (!offer) { res.status(404).json({ error: 'Oferta não encontrada.' }); return; }
         if (offer.status !== 'pending') {
             res.status(409).json({ error: 'Apenas ofertas pendentes podem ser aceitas.' }); return;
         }
 
         const [updated] = await Promise.all([
-            updateOfferStatus(demandId, offerId, 'accepted'),
-            updateDemandStatus(demandId, 'negotiating'),
+            updateOfferStatus(offerId, 'accepted'),
+            updateDemandStatus(offer.demandId, 'negotiating'),
         ]);
 
         res.json({ offer: updated });
@@ -137,26 +137,26 @@ export async function acceptOffer(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * POST /establishment/demands/:demandId/offers/:offerId/reject
- * Establishment recusa a oferta. Demanda permanece com status atual.
+ * POST /establishment/offers/:offerId/reject
+ * Establishment recusa a oferta.
  */
 export async function rejectOffer(req: Request, res: Response): Promise<void> {
     try {
         const uid = req.user.uid;
-        const demandId = req.params['demandId'] as string;
-        const offerId  = req.params['offerId']  as string;
+        const offerId = req.params['offerId'] as string;
 
-        const demand = await findDemand(demandId);
+        const offer = await findOffer(offerId);
+        if (!offer) { res.status(404).json({ error: 'Oferta não encontrada.' }); return; }
+
+        const demand = await findDemand(offer.demandId);
         if (!demand) { res.status(404).json({ error: 'Solicitação não encontrada.' }); return; }
         if (demand.establishmentUid !== uid) { res.status(403).json({ error: 'Acesso negado.' }); return; }
 
-        const offer = await findOffer(demandId, offerId);
-        if (!offer) { res.status(404).json({ error: 'Oferta não encontrada.' }); return; }
         if (offer.status !== 'pending' && offer.status !== 'accepted') {
             res.status(409).json({ error: 'Esta oferta não pode ser recusada no status atual.' }); return;
         }
 
-        const updated = await updateOfferStatus(demandId, offerId, 'rejected');
+        const updated = await updateOfferStatus(offerId, 'rejected');
         res.json({ offer: updated });
     } catch (e) {
         console.error('[offer.rejectOffer] error:', e);
@@ -165,32 +165,31 @@ export async function rejectOffer(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * POST /establishment/demands/:demandId/offers/:offerId/confirm
+ * POST /establishment/offers/:offerId/confirm
  * Negócio fechado: quantidade da oferta é abatida da demanda.
  * Se quantityNeeded for totalmente atendida, demanda passa para 'closed'.
  */
 export async function confirmOffer(req: Request, res: Response): Promise<void> {
     try {
         const uid = req.user.uid;
-        const demandId = req.params['demandId'] as string;
-        const offerId  = req.params['offerId']  as string;
+        const offerId = req.params['offerId'] as string;
 
-        const demand = await findDemand(demandId);
+        const offer = await findOffer(offerId);
+        if (!offer) { res.status(404).json({ error: 'Oferta não encontrada.' }); return; }
+
+        const demand = await findDemand(offer.demandId);
         if (!demand) { res.status(404).json({ error: 'Solicitação não encontrada.' }); return; }
         if (demand.establishmentUid !== uid) { res.status(403).json({ error: 'Acesso negado.' }); return; }
 
-        const offer = await findOffer(demandId, offerId);
-        if (!offer) { res.status(404).json({ error: 'Oferta não encontrada.' }); return; }
         if (offer.status !== 'accepted') {
             res.status(409).json({ error: 'Apenas ofertas aceitas podem ser confirmadas.' }); return;
         }
 
-        const updated = await updateOfferStatus(demandId, offerId, 'confirmed');
+        const updated = await updateOfferStatus(offerId, 'confirmed');
 
-        // Verifica se a demanda foi completamente atendida
-        const stats = await getDemandOfferStats(demandId);
+        const stats = await getDemandOfferStats(offer.demandId);
         if (stats.quantityConfirmed >= demand.quantityNeeded) {
-            await updateDemandStatus(demandId, 'closed');
+            await updateDemandStatus(offer.demandId, 'closed');
         }
 
         res.json({ offer: updated, stats });
@@ -231,7 +230,7 @@ export async function submitOffer(req: Request, res: Response): Promise<void> {
         // }
 
         const producerName = await resolveProducerName(producerUid);
-        const offer = await createOffer(demandId, producerUid, producerName, input);
+        const offer = await createOffer(demandId, demand.establishmentUid, producerUid, producerName, input);
         res.status(201).json({ offer });
     } catch (e) {
         console.error('[offer.submitOffer] error:', e);
@@ -240,15 +239,14 @@ export async function submitOffer(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * DELETE /marketplace/demands/:demandId/offers/:offerId
+ * DELETE /marketplace/offers/:offerId
  * Produtor cancela a própria oferta.
  */
 export async function cancelOffer(req: Request, res: Response): Promise<void> {
     try {
         const producerUid = req.user.uid;
-        const demandId = req.params['demandId'] as string;
-        const offerId  = req.params['offerId']  as string;
-        await cancelOfferByProducer(demandId, offerId, producerUid);
+        const offerId = req.params['offerId'] as string;
+        await cancelOfferByProducer(offerId, producerUid);
         res.status(204).send();
     } catch (e) {
         const msg = e instanceof Error ? e.message : '';
@@ -262,7 +260,7 @@ export async function cancelOffer(req: Request, res: Response): Promise<void> {
 
 /**
  * GET /marketplace/my-offers
- * Produtor lista todas as suas próprias ofertas (em todas as demandas).
+ * Produtor lista todas as suas próprias ofertas.
  */
 export async function getMyOffers(req: Request, res: Response): Promise<void> {
     try {

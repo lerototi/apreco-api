@@ -74,6 +74,7 @@ function applyArrayMarkers(
 function makeDocRef(fullPath: string, docId: string): any {
   return {
     id: docId,
+    _fullPath: fullPath,
 
     get: jest.fn(async () => {
       const data = firestoreStore.get(fullPath);
@@ -118,6 +119,8 @@ function makeCollectionRef(colPath: string, whereFilters: Array<{ field: string;
           const fieldVal = (data as Record<string, unknown>)[field];
           if (op === '==') return fieldVal === value;
           if (op === '!=') return fieldVal !== value;
+          if (op === 'in') return Array.isArray(value) && value.includes(fieldVal);
+          if (op === 'not-in') return Array.isArray(value) && !value.includes(fieldVal);
           if (op === '>') return (fieldVal as number) > (value as number);
           if (op === '>=') return (fieldVal as number) >= (value as number);
           if (op === '<') return (fieldVal as number) < (value as number);
@@ -149,6 +152,17 @@ function makeCollectionRef(colPath: string, whereFilters: Array<{ field: string;
     /** orderBy — retorna o mesmo CollectionRef (fluent, sem ordenação real no mock) */
     orderBy: jest.fn(() => makeCollectionRef(colPath, whereFilters)),
 
+    /** limit — retorna um CollectionRef com limitação de resultados */
+    limit: jest.fn((n: number) => {
+      const limited = makeCollectionRef(colPath, whereFilters);
+      const originalGet = limited.get;
+      limited.get = jest.fn(async () => {
+        const result = await originalGet();
+        return { docs: result.docs.slice(0, n), empty: result.docs.slice(0, n).length === 0 };
+      });
+      return limited;
+    }),
+
     /** get — retorna docs filtrados */
     get: jest.fn(async () => {
       const docs = getFilteredDocs();
@@ -161,6 +175,25 @@ function makeCollectionRef(colPath: string, whereFilters: Array<{ field: string;
 
 export const db = {
   collection: jest.fn((col: string) => makeCollectionRef(col)),
+  /** batch — simula escritas em lote (aplica ao store em memória) */
+  batch: jest.fn(() => {
+    const ops: Array<() => void> = [];
+    return {
+      set: jest.fn((ref: any, data: Record<string, unknown>) => {
+        ops.push(() => firestoreStore.set(ref._fullPath ?? ref.id, { ...data }));
+      }),
+      update: jest.fn((ref: any, data: Record<string, unknown>) => {
+        ops.push(() => {
+          const existing: any = firestoreStore.get(ref._fullPath ?? ref.id) ?? {};
+          firestoreStore.set(ref._fullPath ?? ref.id, applyArrayMarkers(existing, data));
+        });
+      }),
+      delete: jest.fn((ref: any) => {
+        ops.push(() => firestoreStore.delete(ref._fullPath ?? ref.id));
+      }),
+      commit: jest.fn(async () => { ops.forEach(fn => fn()); }),
+    };
+  }),
   /** collectionGroup — busca subcoleções em qualquer profundidade */
   collectionGroup: jest.fn((subColName: string) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -178,6 +211,7 @@ export const db = {
               const fieldVal = (data as Record<string, unknown>)[field];
               if (op === '==') return fieldVal === value;
               if (op === '!=') return fieldVal !== value;
+              if (op === 'in') return Array.isArray(value) && value.includes(fieldVal);
               return true;
             }),
           )

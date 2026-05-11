@@ -414,7 +414,7 @@ describe('getOpenDemand', () => {
     expect(res.status).toHaveBeenCalledWith(404);
   });
 
-  it('retorna 404 quando demanda existe mas não está aberta', async () => {
+  it('retorna 404 quando demanda existe mas está cancelada', async () => {
     seedDemand({ status: 'cancelled' });
 
     const req = makeRequest({ params: { demandId: DEMAND_ID } });
@@ -423,5 +423,29 @@ describe('getOpenDemand', () => {
     await getOpenDemand(req, res);
 
     expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it('retorna demanda com status negotiating', async () => {
+    seedDemand({ status: 'negotiating' });
+
+    const req = makeRequest({ params: { demandId: DEMAND_ID } });
+    const res = makeResponse();
+
+    await getOpenDemand(req, res);
+
+    const returned = (res.json as jest.Mock).mock.calls[0][0];
+    expect(returned.demand.id).toBe(DEMAND_ID);
+  });
+
+  it('retorna demanda com status closed', async () => {
+    seedDemand({ status: 'closed' });
+
+    const req = makeRequest({ params: { demandId: DEMAND_ID } });
+    const res = makeResponse();
+
+    await getOpenDemand(req, res);
+
+    const returned = (res.json as jest.Mock).mock.calls[0][0];
+    expect(returned.demand.id).toBe(DEMAND_ID);
   });
 });

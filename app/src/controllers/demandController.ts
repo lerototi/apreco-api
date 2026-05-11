@@ -190,7 +190,7 @@ export async function getOpenDemand(req: Request, res: Response): Promise<void> 
         const demandId = req.params['demandId'] as string;
         const demand = await findDemand(demandId);
 
-        if (!demand || demand.status !== 'open') {
+        if (!demand || demand.status === 'cancelled') {
             res.status(404).json({ error: 'Solicitação não encontrada.' });
             return;
         }

@@ -188,6 +188,7 @@ export function makeResponse() {
 import type { FarmProperty, FarmPropertyInput } from '../../models/farmProperty';
 import type { EstablishmentDemand } from '../../models/establishmentDemand';
 import type { DemandOffer } from '../../models/demandOffer';
+import type { ChatMessage, MessageAuthorRole } from '../../models/offerMessage';
 
 export function makeFarmPropertyInput(overrides: Partial<FarmPropertyInput> = {}): FarmPropertyInput {
   return {
@@ -243,15 +244,34 @@ export function makeEstablishmentDemand(overrides: Partial<EstablishmentDemand> 
 export function makeDemandOffer(overrides: Partial<DemandOffer> = {}): DemandOffer {
   return {
     id: 'offer-001',
-    demandId: 'demand-001',
     producerUid: 'uid-producer-001',
     producerName: 'Sítio Raízes Vivas',
+    demandId: 'demand-001',
+    establishmentUid: 'uid-test-001',
     quantity: 20,
     pricePerUnit: 10.00,
     message: 'Oferta de teste',
     status: 'pending',
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+// ─── ChatMessage factory ──────────────────────────────────────────────────────
+
+export function makeChatMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
+  return {
+    id: 'msg-001',
+    senderUid: 'uid-producer-001',
+    authorRole: 'ruralProducer' as MessageAuthorRole,
+    senderName: 'Sítio Raízes Vivas',
+    offerId: 'offer-001',
+    demandId: 'demand-001',
+    productId: null,
+    text: 'Mensagem de teste',
+    read: false,
+    createdAt: '2024-01-01T00:00:00.000Z',
     ...overrides,
   };
 }

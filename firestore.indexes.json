@@ -35,19 +35,60 @@
       ]
     },
     {
-      "collectionGroup": "offers",
-      "queryScope": "COLLECTION_GROUP",
+      "collectionGroup": "ruralProducerOffers",
+      "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "producerUid", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "offers",
+      "collectionGroup": "ruralProducerOffers",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "establishmentUid", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ruralProducerOffers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "demandId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ruralProducerOffers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "establishmentUid", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chatMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "offerId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chatMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "offerId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chatMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "offerId", "order": "ASCENDING" },
+        { "fieldPath": "read", "order": "ASCENDING" }
       ]
     }
   ],
