@@ -31,6 +31,7 @@ import {
 import { findDemand, updateDemandStatus } from '../models/establishmentDemand';
 import { findRuralProducerProfile } from '../models/profiles/ruralProducer';
 import { findPendingProposalForOffer } from '../models/negotiationProposal';
+import { createSystemMessage } from '../models/offerMessage';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -187,6 +188,14 @@ export async function rejectOffer(req: Request, res: Response): Promise<void> {
         }
 
         const updated = await updateOfferStatus(offerId, 'rejected');
+
+        // Injeta evento de sistema no chat para que ambas as partes vejam o encerramento
+        await createSystemMessage(
+            offerId,
+            offer.demandId,
+            '❌ Esta oferta foi recusada pelo estabelecimento. O histórico desta negociação permanece disponível para consulta.',
+        ).catch(() => {/* não impede a resposta se falhar */});
+
         res.json({ offer: updated });
     } catch (e) {
         console.error('[offer.rejectOffer] error:', e);
@@ -221,6 +230,13 @@ export async function confirmOffer(req: Request, res: Response): Promise<void> {
         if (stats.quantityConfirmed >= demand.quantityNeeded) {
             await updateDemandStatus(offer.demandId, 'closed');
         }
+
+        // Injeta evento de sistema no chat
+        await createSystemMessage(
+            offerId,
+            offer.demandId,
+            '✅ Negócio confirmado! O acordo foi fechado e a quantidade registrada como atendida.',
+        ).catch(() => {});
 
         res.json({ offer: updated, stats });
     } catch (e) {
@@ -276,7 +292,20 @@ export async function cancelOffer(req: Request, res: Response): Promise<void> {
     try {
         const producerUid = req.user.uid;
         const offerId = req.params['offerId'] as string;
+
+        // Precisamos do demandId antes de cancelar para a msg de sistema
+        const offerBefore = await findOffer(offerId);
+
         await cancelOfferByProducer(offerId, producerUid);
+
+        if (offerBefore) {
+            await createSystemMessage(
+                offerId,
+                offerBefore.demandId,
+                '🚫 O produtor cancelou esta oferta. O histórico desta negociação permanece disponível para consulta.',
+            ).catch(() => {});
+        }
+
         res.status(204).send();
     } catch (e) {
         const msg = e instanceof Error ? e.message : '';

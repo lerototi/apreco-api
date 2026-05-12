@@ -3,13 +3,15 @@
  *
  * Cobre:
  *  estGetMessages         — lista mensagens (200), oferta não encontrada (404), acesso negado (403)
- *  estSendMessage         — envia mensagem (201), texto vazio (400)
+ *  estSendMessage         — envia mensagem (201), texto vazio (400),
+ *                           409 para negociação encerrada (rejected/confirmed/cancelled)
  *  estMarkRead            — marca lidas (204)
  *  estGetChatThreads      — lista threads do estabelecimento
  *  estUnreadCount         — retorna total de não lidas
  *
  *  producerGetMessages    — lista mensagens (200), acesso de outro produtor (403)
- *  producerSendMessage    — envia mensagem (201), texto vazio (400)
+ *  producerSendMessage    — envia mensagem (201), texto vazio (400),
+ *                           409 para negociação encerrada (rejected/confirmed/cancelled)
  *  producerMarkRead       — marca lidas (204)
  *  producerGetChatThreads — lista threads do produtor
  *  producerUnreadCount    — retorna total de não lidas
@@ -171,6 +173,22 @@ describe('estSendMessage', () => {
         await estSendMessage(req as any, res as any);
         expect(res.status).toHaveBeenCalledWith(400);
     });
+
+    it.each(['rejected', 'confirmed', 'cancelled'])(
+        '409 — estabelecimento não pode enviar msg para oferta %s',
+        async (closedStatus) => {
+            seedDemand();
+            seedOffer({ status: closedStatus as any });
+            const req = makeRequest({
+                user: { uid: EST_UID },
+                params: { offerId: OFFER_ID },
+                body: { text: 'Ainda dá?' },
+            });
+            const res = makeResponse();
+            await estSendMessage(req as any, res as any);
+            expect(res.status).toHaveBeenCalledWith(409);
+        },
+    );
 });
 
 // ─── estMarkRead ──────────────────────────────────────────────────────────────
@@ -300,6 +318,22 @@ describe('producerSendMessage', () => {
         await producerSendMessage(req as any, res as any);
         expect(res.status).toHaveBeenCalledWith(400);
     });
+
+    it.each(['rejected', 'confirmed', 'cancelled'])(
+        '409 — produtor não pode enviar msg para oferta %s',
+        async (closedStatus) => {
+            seedDemand();
+            seedOffer({ status: closedStatus as any });
+            const req = makeRequest({
+                user: { uid: PRODUCER_UID },
+                params: { offerId: OFFER_ID },
+                body: { text: 'Posso mesmo?' },
+            });
+            const res = makeResponse();
+            await producerSendMessage(req as any, res as any);
+            expect(res.status).toHaveBeenCalledWith(409);
+        },
+    );
 });
 
 // ─── producerMarkRead ─────────────────────────────────────────────────────────

@@ -50,6 +50,30 @@ function fmtCurrency(v: number): string {
 /**
  * Valida que o usuário autenticado tem acesso à oferta com o papel esperado.
  * Retorna o objeto da oferta ou encerra a resposta com erro.
+ * Não verifica status — usar para leitura (GET).
+ */
+async function validateAccessReadOnly(
+    req: Request,
+    res: Response,
+    offerId: string,
+    role: 'establishment' | 'ruralProducer',
+) {
+    const offer = await findOffer(offerId);
+    if (!offer) { res.status(404).json({ error: 'Oferta não encontrada.' }); return null; }
+
+    if (role === 'establishment' && offer.establishmentUid !== req.user.uid) {
+        res.status(403).json({ error: 'Acesso negado.' }); return null;
+    }
+    if (role === 'ruralProducer' && offer.producerUid !== req.user.uid) {
+        res.status(403).json({ error: 'Acesso negado.' }); return null;
+    }
+    return offer;
+}
+
+/**
+ * Valida que o usuário autenticado tem acesso à oferta com o papel esperado.
+ * Retorna o objeto da oferta ou encerra a resposta com erro.
+ * Exige status 'accepted' — usar para criação/resposta de propostas (POST).
  */
 async function validateAccess(
     req: Request,
@@ -78,7 +102,7 @@ async function validateAccess(
 async function getProposals(req: Request, res: Response, role: 'establishment' | 'ruralProducer'): Promise<void> {
     try {
         const { offerId } = req.params as { offerId: string };
-        const offer = await validateAccess(req, res, offerId, role);
+        const offer = await validateAccessReadOnly(req, res, offerId, role);
         if (!offer) return;
 
         const proposals = await listProposalsByOffer(offerId);

@@ -9,15 +9,18 @@
  *  - acceptOffer:         aceita oferta pending → demanda vira negotiating (200),
  *                         oferta já aceita/rejeitada (409)
  *  - rejectOffer:         rejeita oferta pending, rejeita oferta accepted,
+ *                         injeta mensagem de sistema no chat,
  *                         oferta já confirmada/cancelada (409)
  *  - confirmOffer:        confirma oferta accepted → retorna stats,
+ *                         injeta mensagem de sistema no chat,
  *                         fecha demanda se quantityConfirmed >= quantityNeeded,
  *                         oferta não accepted (409)
  *
  * Visão do produtor (marketplace):
  *  - submitOffer:         envia oferta válida (201), demanda não aberta (404),
  *                         quantity/pricePerUnit <= 0 (400)
- *  - cancelOffer:         cancela oferta própria (204), oferta de outro produtor (403),
+ *  - cancelOffer:         cancela oferta própria (204), injeta mensagem de sistema no chat,
+ *                         oferta de outro produtor (403),
  *                         oferta já confirmada (409), oferta não encontrada (404)
  *  - getMyOffers:         lista próprias ofertas
  */
@@ -264,6 +267,22 @@ describe('rejectOffer', () => {
     expect(returned.offer.status).toBe('rejected');
   });
 
+  it('injeta mensagem de sistema no chat ao rejeitar oferta', async () => {
+    seedDemand();
+    seedOffer({ status: 'accepted' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await rejectOffer(req, res);
+
+    const allMessages = [...firestoreStore.entries()]
+      .filter(([k]) => k.startsWith('chatMessages/'))
+      .map(([, v]) => v as Record<string, unknown>);
+    expect(allMessages.length).toBeGreaterThanOrEqual(1);
+    expect(allMessages.some(m => m.authorRole === 'system')).toBe(true);
+  });
+
   it('retorna 409 ao tentar rejeitar oferta já confirmada', async () => {
     seedDemand();
     seedOffer({ status: 'confirmed' });
@@ -304,6 +323,22 @@ describe('confirmOffer', () => {
     const returned = (res.json as jest.Mock).mock.calls[0][0];
     expect(returned.offer.status).toBe('confirmed');
     expect(returned).toHaveProperty('stats');
+  });
+
+  it('injeta mensagem de sistema no chat ao confirmar oferta', async () => {
+    seedDemand({ quantityNeeded: 100, status: 'negotiating' });
+    seedOffer({ status: 'accepted', quantity: 10 });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await confirmOffer(req, res);
+
+    const allMessages = [...firestoreStore.entries()]
+      .filter(([k]) => k.startsWith('chatMessages/'))
+      .map(([, v]) => v as Record<string, unknown>);
+    expect(allMessages.length).toBeGreaterThanOrEqual(1);
+    expect(allMessages.some(m => m.authorRole === 'system')).toBe(true);
   });
 
   it('fecha demanda automaticamente quando quantityConfirmed >= quantityNeeded', async () => {
@@ -447,6 +482,22 @@ describe('cancelOffer', () => {
     await cancelOffer(req, res);
 
     expect(res.status).toHaveBeenCalledWith(204);
+  });
+
+  it('injeta mensagem de sistema no chat ao cancelar oferta', async () => {
+    seedDemand();
+    seedOffer({ producerUid: EST_UID, status: 'accepted' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await cancelOffer(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(204);
+    const allMessages = [...firestoreStore.entries()]
+      .filter(([k]) => k.startsWith('chatMessages/'))
+      .map(([, v]) => v as Record<string, unknown>);
+    expect(allMessages.some(m => m.authorRole === 'system')).toBe(true);
   });
 
   it('retorna 403 ao tentar cancelar oferta de outro produtor', async () => {

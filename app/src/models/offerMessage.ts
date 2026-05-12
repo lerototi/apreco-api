@@ -19,7 +19,7 @@ import { db } from '../config/firebase';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-export type MessageAuthorRole = 'establishment' | 'ruralProducer' | 'consumer';
+export type MessageAuthorRole = 'establishment' | 'ruralProducer' | 'consumer' | 'system';
 
 export interface ChatMessage {
     id: string;
@@ -112,6 +112,18 @@ export async function getLastMessageForOffer(
 
 // ─── Mutations ────────────────────────────────────────────────────────────────
 
+/**
+ * Cria uma mensagem de sistema (evento de status) sem remetente humano.
+ * authorRole = 'system'; senderUid = 'system'; read = true (não gera notificação).
+ */
+export async function createSystemMessage(
+    offerId: string,
+    demandId: string | null,
+    text: string,
+): Promise<ChatMessage> {
+    return createMessage(offerId, demandId, 'system', 'Sistema', 'system', text, true);
+}
+
 export async function createMessage(
     offerId: string,
     demandId: string | null,
@@ -119,6 +131,7 @@ export async function createMessage(
     senderName: string,
     authorRole: MessageAuthorRole,
     text: string,
+    alreadyRead = false,
 ): Promise<ChatMessage> {
     const now = new Date().toISOString();
     const ref = messagesCol().doc();
@@ -131,7 +144,7 @@ export async function createMessage(
         demandId,
         productId:  null,
         text:       text.trim(),
-        read:       false,
+        read:       alreadyRead,
         createdAt:  now,
     };
     await ref.set(msg);

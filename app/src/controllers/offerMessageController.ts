@@ -110,6 +110,12 @@ export async function estSendMessage(req: Request, res: Response): Promise<void>
         const access = await validateEstablishmentAccess(req, res, offerId);
         if (!access) return;
 
+        const CLOSED_STATUSES = ['rejected', 'confirmed', 'cancelled'];
+        if (CLOSED_STATUSES.includes(access.offer.status)) {
+            res.status(409).json({ error: 'Não é possível enviar mensagens para uma negociação encerrada.' });
+            return;
+        }
+
         const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
         if (!text) { res.status(400).json({ error: 'text é obrigatório.' }); return; }
 
@@ -244,6 +250,12 @@ export async function producerSendMessage(req: Request, res: Response): Promise<
         const { offerId } = req.params as { offerId: string };
         const access = await validateProducerAccess(req, res, offerId);
         if (!access) return;
+
+        const CLOSED_STATUSES = ['rejected', 'confirmed', 'cancelled'];
+        if (CLOSED_STATUSES.includes(access.offer.status)) {
+            res.status(409).json({ error: 'Não é possível enviar mensagens para uma negociação encerrada.' });
+            return;
+        }
 
         const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
         if (!text) { res.status(400).json({ error: 'text é obrigatório.' }); return; }
