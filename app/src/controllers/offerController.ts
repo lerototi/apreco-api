@@ -23,6 +23,7 @@ import {
     listOffersByDemand,
     listOffersByProducer,
     listPendingOffersByEstablishment,
+    listAllOffersByEstablishment,
     cancelOfferByProducer,
     updateOfferStatus,
     getDemandOfferStats,
@@ -53,6 +54,22 @@ export async function getPendingOffers(req: Request, res: Response): Promise<voi
     } catch (e) {
         console.error('[offer.getPendingOffers] error:', e);
         res.status(500).json({ error: 'Erro ao buscar ofertas pendentes.' });
+    }
+}
+
+/**
+ * GET /establishment/all-offers
+ * Lista TODAS as ofertas (todos os status) de todas as demandas do estabelecimento.
+ * Inclui histórico de recusadas, canceladas e confirmadas.
+ */
+export async function getAllOffers(req: Request, res: Response): Promise<void> {
+    try {
+        const uid = req.user.uid;
+        const offers = await listAllOffersByEstablishment(uid);
+        res.json({ offers });
+    } catch (e) {
+        console.error('[offer.getAllOffers] error:', e);
+        res.status(500).json({ error: 'Erro ao buscar ofertas.' });
     }
 }
 

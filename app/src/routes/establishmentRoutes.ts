@@ -50,6 +50,7 @@ router.delete('/demands/:demandId', authenticate, demandController.cancelMyDeman
 
 // ─── Ofertas (visão do estabelecimento) ───────────────────────────────────────
 router.get('/pending-offers',                         authenticate, offerController.getPendingOffers);
+router.get('/all-offers',                             authenticate, offerController.getAllOffers);
 router.get('/demands/:demandId/offers',               authenticate, offerController.getOffersForDemand);
 router.get('/offers/:offerId',                        authenticate, offerController.getOfferDetail);
 router.post('/offers/:offerId/accept',                authenticate, offerController.acceptOffer);

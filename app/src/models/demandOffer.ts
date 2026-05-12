@@ -141,6 +141,42 @@ export async function listPendingOffersByEstablishment(
     return results;
 }
 
+/**
+ * Lista TODAS as ofertas de um estabelecimento (todos os status).
+ * Retorna também o nome do insumo da demanda para exibição na tela.
+ * Ordem: pending → accepted → confirmed → rejected → cancelled; dentro de cada grupo: mais recentes primeiro.
+ */
+export async function listAllOffersByEstablishment(
+    establishmentUid: string,
+): Promise<(DemandOffer & { demandProductName: string })[]> {
+    const snap = await offersCol()
+        .where('establishmentUid', '==', establishmentUid)
+        .orderBy('createdAt', 'desc')
+        .get();
+
+    if (snap.empty) return [];
+
+    const demandIds = [...new Set(snap.docs.map(d => d.data().demandId as string))];
+    const demandMap = new Map<string, string>();
+    await Promise.all(demandIds.map(async (did) => {
+        const doc = await db.collection('establishmentDemands').doc(did).get();
+        if (doc.exists) demandMap.set(did, (doc.data()?.productName as string) ?? '');
+    }));
+
+    const results = snap.docs.map(d => {
+        const offer = { id: d.id, ...d.data() } as DemandOffer;
+        return { ...offer, demandProductName: demandMap.get(offer.demandId) ?? '' };
+    });
+
+    const ORDER = { pending: 0, accepted: 1, confirmed: 2, rejected: 3, cancelled: 4 };
+    results.sort((a, b) =>
+        (ORDER[a.status] - ORDER[b.status]) ||
+        b.createdAt.localeCompare(a.createdAt),
+    );
+
+    return results;
+}
+
 export async function findOffer(offerId: string): Promise<DemandOffer | null> {
     const doc = await offersCol().doc(offerId).get();
     if (!doc.exists) return null;
