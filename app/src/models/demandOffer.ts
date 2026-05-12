@@ -205,13 +205,13 @@ export async function getDemandOfferStats(demandId: string): Promise<{
     quantityConfirmed: number;
 }> {
     const offers = await listOffersByDemand(demandId);
-    const active = offers.filter(o => o.status !== 'rejected' && o.status !== 'cancelled');
+    const nonCancelled = offers.filter(o => o.status !== 'rejected' && o.status !== 'cancelled');
     return {
-        offerCount:        active.length,
-        quantityOffered:   active
+        offerCount:        offers.length,          // total real incluindo histórico
+        quantityOffered:   nonCancelled
             .filter(o => o.status === 'pending' || o.status === 'accepted')
             .reduce((sum, o) => sum + o.quantity, 0),
-        quantityConfirmed: active
+        quantityConfirmed: nonCancelled
             .filter(o => o.status === 'confirmed')
             .reduce((sum, o) => sum + o.quantity, 0),
     };
