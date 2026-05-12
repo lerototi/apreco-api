@@ -255,7 +255,7 @@ describe('rejectOffer', () => {
   });
 
   it('rejeita oferta accepted (volta atrás da negociação)', async () => {
-    seedDemand();
+    seedDemand({ status: 'negotiating' });
     seedOffer({ status: 'accepted' });
 
     const req = makeRequest({ params: { offerId: OFFER_ID } });
@@ -265,6 +265,8 @@ describe('rejectOffer', () => {
 
     const returned = (res.json as jest.Mock).mock.calls[0][0];
     expect(returned.offer.status).toBe('rejected');
+    const demandInStore = firestoreStore.get(`establishmentDemands/${DEMAND_ID}`) as Record<string, unknown>;
+    expect(demandInStore.status).toBe('open');
   });
 
   it('injeta mensagem de sistema no chat ao rejeitar oferta', async () => {
@@ -485,7 +487,7 @@ describe('cancelOffer', () => {
   });
 
   it('injeta mensagem de sistema no chat ao cancelar oferta', async () => {
-    seedDemand();
+    seedDemand({ status: 'negotiating' });
     seedOffer({ producerUid: EST_UID, status: 'accepted' });
 
     const req = makeRequest({ params: { offerId: OFFER_ID } });
@@ -498,6 +500,20 @@ describe('cancelOffer', () => {
       .filter(([k]) => k.startsWith('chatMessages/'))
       .map(([, v]) => v as Record<string, unknown>);
     expect(allMessages.some(m => m.authorRole === 'system')).toBe(true);
+  });
+
+  it('devolve demanda para open ao cancelar oferta accepted', async () => {
+    seedDemand({ status: 'negotiating' });
+    seedOffer({ producerUid: EST_UID, status: 'accepted' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await cancelOffer(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(204);
+    const demandInStore = firestoreStore.get(`establishmentDemands/${DEMAND_ID}`) as Record<string, unknown>;
+    expect(demandInStore.status).toBe('open');
   });
 
   it('retorna 403 ao tentar cancelar oferta de outro produtor', async () => {

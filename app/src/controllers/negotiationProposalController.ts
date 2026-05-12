@@ -25,9 +25,8 @@ import {
     createProposal,
     respondToProposal,
 } from '../models/negotiationProposal';
-import { findOffer, updateOfferStatus } from '../models/demandOffer';
+import { findOffer } from '../models/demandOffer';
 import { findDemand } from '../models/establishmentDemand';
-import { createMessage } from '../models/offerMessage';
 import { findRuralProducerProfile } from '../models/profiles/ruralProducer';
 import { findEstablishmentProfile } from '../models/profiles/establishment';
 import { db } from '../config/firebase';
@@ -41,10 +40,6 @@ async function resolveDisplayName(uid: string, role: 'establishment' | 'ruralPro
     }
     const p = await findRuralProducerProfile(uid);
     return p?.displayName?.trim() || 'Produtor';
-}
-
-function fmtCurrency(v: number): string {
-    return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 /**
@@ -176,16 +171,6 @@ async function submitProposal(
             respondedAt:      null,
         });
 
-        // Mensagem-sistema automática no chat
-        const priceChanged    = proposedPrice    !== offer.pricePerUnit;
-        const quantityChanged = proposedQuantity !== offer.quantity;
-        const changes: string[] = [];
-        if (priceChanged)    changes.push(`preço: ${fmtCurrency(offer.pricePerUnit)} → ${fmtCurrency(proposedPrice)}`);
-        if (quantityChanged) changes.push(`quantidade: ${offer.quantity} → ${proposedQuantity} ${unit}`);
-
-        const systemText = `📋 ${proposerName} fez uma proposta: ${changes.join(', ')}.`;
-        await createMessage(offerId, offer.demandId, uid, proposerName, proposerRole, systemText);
-
         res.status(201).json({ proposal });
     } catch (e) {
         console.error('[negotiation.submitProposal] error:', e);
@@ -233,7 +218,6 @@ async function respondProposal(
         }
 
         const updated = await respondToProposal(proposalId, action === 'accept' ? 'accepted' : 'rejected');
-        const responderName = await resolveDisplayName(uid, responderRole);
 
         if (action === 'accept') {
             // Atualiza os valores da oferta no Firestore
@@ -243,12 +227,6 @@ async function respondProposal(
                 quantity:     proposal.proposedQuantity,
                 updatedAt:    now,
             });
-
-            const systemText = `✅ ${responderName} aceitou a proposta. Novo preço: ${fmtCurrency(proposal.proposedPrice)}, quantidade: ${proposal.proposedQuantity} ${proposal.unit}.`;
-            await createMessage(offerId, offer.demandId, uid, responderName, responderRole, systemText);
-        } else {
-            const systemText = `❌ ${responderName} recusou a proposta. Os valores anteriores continuam em vigor.`;
-            await createMessage(offerId, offer.demandId, uid, responderName, responderRole, systemText);
         }
 
         res.json({ proposal: updated });

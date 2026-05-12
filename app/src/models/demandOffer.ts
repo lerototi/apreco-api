@@ -89,9 +89,29 @@ export async function listOffersByProducer(producerUid: string): Promise<DemandO
     return snap.docs.map(d => ({ id: d.id, ...d.data() } as DemandOffer));
 }
 
+/** Lista apenas ofertas com status 'accepted' de um produtor (para chat-threads). */
+export async function listAcceptedOffersByProducer(producerUid: string): Promise<DemandOffer[]> {
+    const snap = await offersCol()
+        .where('producerUid', '==', producerUid)
+        .where('status', '==', 'accepted')
+        .orderBy('createdAt', 'desc')
+        .get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as DemandOffer));
+}
+
 export async function listOffersByEstablishment(establishmentUid: string): Promise<DemandOffer[]> {
     const snap = await offersCol()
         .where('establishmentUid', '==', establishmentUid)
+        .orderBy('createdAt', 'desc')
+        .get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as DemandOffer));
+}
+
+/** Lista apenas ofertas com status 'accepted' de um estabelecimento (para chat-threads). */
+export async function listAcceptedOffersByEstablishment(establishmentUid: string): Promise<DemandOffer[]> {
+    const snap = await offersCol()
+        .where('establishmentUid', '==', establishmentUid)
+        .where('status', '==', 'accepted')
         .orderBy('createdAt', 'desc')
         .get();
     return snap.docs.map(d => ({ id: d.id, ...d.data() } as DemandOffer));

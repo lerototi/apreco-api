@@ -189,6 +189,11 @@ export async function rejectOffer(req: Request, res: Response): Promise<void> {
 
         const updated = await updateOfferStatus(offerId, 'rejected');
 
+        // Se a oferta estava aceita, a demanda estava em 'negotiating' — devolve para 'open'
+        if (offer.status === 'accepted') {
+            await updateDemandStatus(offer.demandId, 'open').catch(() => {/* não impede a resposta */});
+        }
+
         // Injeta evento de sistema no chat para que ambas as partes vejam o encerramento
         await createSystemMessage(
             offerId,
@@ -299,6 +304,11 @@ export async function cancelOffer(req: Request, res: Response): Promise<void> {
         await cancelOfferByProducer(offerId, producerUid);
 
         if (offerBefore) {
+            // Se estava aceita, a demanda estava em 'negotiating' — devolve para 'open'
+            if (offerBefore.status === 'accepted') {
+                await updateDemandStatus(offerBefore.demandId, 'open').catch(() => {});
+            }
+
             await createSystemMessage(
                 offerId,
                 offerBefore.demandId,
