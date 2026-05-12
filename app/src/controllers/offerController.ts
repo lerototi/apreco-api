@@ -29,6 +29,7 @@ import {
 } from '../models/demandOffer';
 import { findDemand, updateDemandStatus } from '../models/establishmentDemand';
 import { findRuralProducerProfile } from '../models/profiles/ruralProducer';
+import { findPendingProposalForOffer } from '../models/negotiationProposal';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -74,7 +75,19 @@ export async function getOffersForDemand(req: Request, res: Response): Promise<v
             getDemandOfferStats(demandId),
         ]);
 
-        res.json({ offers, ...stats });
+        // Para ofertas em negociação, verifica se há proposta pendente
+        const acceptedOffers = offers.filter(o => o.status === 'accepted');
+        const pendingFlags = await Promise.all(
+            acceptedOffers.map(o => findPendingProposalForOffer(o.id).then(p => ({ id: o.id, hasPending: !!p }))),
+        );
+        const pendingMap = new Map(pendingFlags.map(f => [f.id, f.hasPending]));
+
+        const enrichedOffers = offers.map(o => ({
+            ...o,
+            hasPendingProposal: pendingMap.get(o.id) ?? false,
+        }));
+
+        res.json({ offers: enrichedOffers, ...stats });
     } catch (e) {
         console.error('[offer.getOffersForDemand] error:', e);
         res.status(500).json({ error: 'Erro ao buscar ofertas.' });

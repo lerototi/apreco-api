@@ -19,6 +19,11 @@
  *   POST   /establishment/offers/:offerId/reject          → recusa oferta
  *   POST   /establishment/offers/:offerId/confirm         → confirma negócio fechado
  *
+ * Propostas de negociação:
+ *   GET    /establishment/offers/:offerId/proposals                     → histórico de propostas
+ *   POST   /establishment/offers/:offerId/proposals                     → faz nova proposta
+ *   POST   /establishment/offers/:offerId/proposals/:proposalId/respond → aceita ou recusa proposta
+ *
  * Chat (mensagens de negociação):
  *   GET    /establishment/chat-threads                    → lista threads ativas
  *   GET    /establishment/chat-threads/unread-count       → total não lidas
@@ -32,6 +37,7 @@ import { authenticate } from '../middleware/auth';
 import * as demandController from '../controllers/demandController';
 import * as offerController from '../controllers/offerController';
 import * as offerMessageController from '../controllers/offerMessageController';
+import * as negotiationController from '../controllers/negotiationProposalController';
 
 const router = Router();
 
@@ -49,6 +55,11 @@ router.get('/offers/:offerId',                        authenticate, offerControl
 router.post('/offers/:offerId/accept',                authenticate, offerController.acceptOffer);
 router.post('/offers/:offerId/reject',                authenticate, offerController.rejectOffer);
 router.post('/offers/:offerId/confirm',               authenticate, offerController.confirmOffer);
+
+// ─── Propostas de negociação ──────────────────────────────────────────────────
+router.get('/offers/:offerId/proposals',                             authenticate, negotiationController.estGetProposals);
+router.post('/offers/:offerId/proposals',                            authenticate, negotiationController.estSubmitProposal);
+router.post('/offers/:offerId/proposals/:proposalId/respond',        authenticate, negotiationController.estRespondProposal);
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 router.get('/chat-threads',                           authenticate, offerMessageController.estGetChatThreads);

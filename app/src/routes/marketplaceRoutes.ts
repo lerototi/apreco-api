@@ -14,6 +14,11 @@
  *   POST   /marketplace/demands/:demandId/offers          → envia oferta
  *   DELETE /marketplace/offers/:offerId                   → cancela própria oferta
  *
+ * Propostas de negociação:
+ *   GET    /marketplace/offers/:offerId/proposals                     → histórico de propostas
+ *   POST   /marketplace/offers/:offerId/proposals                     → faz nova proposta
+ *   POST   /marketplace/offers/:offerId/proposals/:proposalId/respond → aceita ou recusa proposta
+ *
  * Chat (mensagens de negociação — produtor):
  *   GET    /marketplace/chat-threads                      → lista threads ativas
  *   GET    /marketplace/chat-threads/unread-count         → total não lidas
@@ -28,6 +33,7 @@ import * as marketplaceController from '../controllers/marketplaceController';
 import * as demandController from '../controllers/demandController';
 import * as offerController from '../controllers/offerController';
 import * as offerMessageController from '../controllers/offerMessageController';
+import * as negotiationController from '../controllers/negotiationProposalController';
 
 const router = Router();
 
@@ -41,6 +47,11 @@ router.get('/demands/:demandId',  demandController.getOpenDemand);
 router.get('/my-offers',                                authenticate, offerController.getMyOffers);
 router.post('/demands/:demandId/offers',                authenticate, offerController.submitOffer);
 router.delete('/offers/:offerId',                       authenticate, offerController.cancelOffer);
+
+// ─── Propostas de negociação ──────────────────────────────────────────────────
+router.get('/offers/:offerId/proposals',                             authenticate, negotiationController.producerGetProposals);
+router.post('/offers/:offerId/proposals',                            authenticate, negotiationController.producerSubmitProposal);
+router.post('/offers/:offerId/proposals/:proposalId/respond',        authenticate, negotiationController.producerRespondProposal);
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 router.get('/chat-threads',                             authenticate, offerMessageController.producerGetChatThreads);
