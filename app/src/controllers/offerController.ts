@@ -31,7 +31,7 @@ import {
 import { findDemand, updateDemandStatus } from '../models/establishmentDemand';
 import { findRuralProducerProfile } from '../models/profiles/ruralProducer';
 import { findPendingProposalForOffer } from '../models/negotiationProposal';
-import { createSystemMessage } from '../models/offerMessage';
+import { createSystemMessage, createMessage } from '../models/offerMessage';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -103,6 +103,7 @@ export async function getOffersForDemand(req: Request, res: Response): Promise<v
         const enrichedOffers = offers.map(o => ({
             ...o,
             hasPendingProposal: pendingMap.get(o.id) ?? false,
+            demandUnit: demand.unit,
         }));
 
         res.json({ offers: enrichedOffers, ...stats });
@@ -282,6 +283,40 @@ export async function submitOffer(req: Request, res: Response): Promise<void> {
 
         const producerName = await resolveProducerName(producerUid);
         const offer = await createOffer(demandId, demand.establishmentUid, producerUid, producerName, input);
+
+        // ── Mensagem inaugural do chat ────────────────────────────────────────
+        // Formata o total da oferta de acordo com a unidade (g/mL = preço total,
+        // demais = pricePerUnit × quantity).
+        const isByTotal = demand.unit === 'g' || demand.unit === 'mL';
+        const totalValue = isByTotal
+            ? input.pricePerUnit
+            : input.pricePerUnit * input.quantity;
+        const fmtBRL = (v: number) =>
+            v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const priceLabel = isByTotal
+            ? `Valor total: ${fmtBRL(totalValue)}`
+            : `${fmtBRL(input.pricePerUnit)} / ${demand.unit} · Total: ${fmtBRL(totalValue)}`;
+
+        const introText =
+            `📦 Nova oferta enviada por ${producerName}\n` +
+            `Produto: ${demand.productName}\n` +
+            `Quantidade: ${input.quantity.toLocaleString('pt-BR')} ${demand.unit}\n` +
+            `${priceLabel}`;
+
+        await createSystemMessage(offer.id, demandId, introText).catch(() => {});
+
+        // Se o produtor incluiu mensagem opcional, publica como bolha dele no chat
+        if (input.message) {
+            await createMessage(
+                offer.id,
+                demandId,
+                producerUid,
+                producerName,
+                'ruralProducer',
+                input.message,
+            ).catch(() => {});
+        }
+
         res.status(201).json({ offer });
     } catch (e) {
         console.error('[offer.submitOffer] error:', e);

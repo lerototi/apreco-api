@@ -27,7 +27,7 @@ import {
     countUnreadForOffer,
     getLastMessageForOffer,
 } from '../models/offerMessage';
-import { findOffer, listOffersByProducer, listOffersByEstablishment, listAcceptedOffersByProducer, listAcceptedOffersByEstablishment } from '../models/demandOffer';
+import { findOffer, listOffersByProducer, listOffersByEstablishment, listAcceptedOffersByProducer, listAcceptedOffersByEstablishment, listActiveOffersByProducer, listActiveOffersByEstablishment } from '../models/demandOffer';
 import { findDemand } from '../models/establishmentDemand';
 import { findRuralProducerProfile } from '../models/profiles/ruralProducer';
 import { findEstablishmentProfile } from '../models/profiles/establishment';
@@ -156,7 +156,7 @@ export async function estMarkRead(req: Request, res: Response): Promise<void> {
 export async function estGetChatThreads(req: Request, res: Response): Promise<void> {
     try {
         const uid = req.user.uid;
-        const allOffers = await listAcceptedOffersByEstablishment(uid);
+        const allOffers = await listActiveOffersByEstablishment(uid);
 
         const threads = await Promise.all(
             allOffers.map(async (offer) => {
@@ -176,7 +176,7 @@ export async function estGetChatThreads(req: Request, res: Response): Promise<vo
                     offerStatus:       offer.status,
                     offerPricePerUnit: offer.pricePerUnit,
                     offerQuantity:     offer.quantity,
-                    offerUnit:         demand?.unit ?? 'un',
+                    offerUnit:         (offer as any).demandUnit ?? demand?.unit ?? 'unidade',
                 };
             })
         );
@@ -202,7 +202,7 @@ export async function estGetChatThreads(req: Request, res: Response): Promise<vo
 export async function estUnreadCount(req: Request, res: Response): Promise<void> {
     try {
         const uid = req.user.uid;
-        const allOffers = await listAcceptedOffersByEstablishment(uid);
+        const allOffers = await listActiveOffersByEstablishment(uid);
 
         let total = 0;
         await Promise.all(
@@ -297,7 +297,7 @@ export async function producerMarkRead(req: Request, res: Response): Promise<voi
 export async function producerGetChatThreads(req: Request, res: Response): Promise<void> {
     try {
         const uid = req.user.uid;
-        const allOffers = await listAcceptedOffersByProducer(uid);
+        const allOffers = await listActiveOffersByProducer(uid);
 
         const threads = await Promise.all(
             allOffers.map(async (offer) => {
@@ -322,7 +322,7 @@ export async function producerGetChatThreads(req: Request, res: Response): Promi
                     offerStatus:       offer.status,
                     offerPricePerUnit: offer.pricePerUnit,
                     offerQuantity:     offer.quantity,
-                    offerUnit:         demand?.unit ?? 'un',
+                    offerUnit:         (offer as any).demandUnit ?? demand?.unit ?? 'unidade',
                 };
             })
         );
@@ -347,7 +347,7 @@ export async function producerGetChatThreads(req: Request, res: Response): Promi
 export async function producerUnreadCount(req: Request, res: Response): Promise<void> {
     try {
         const uid = req.user.uid;
-        const allOffers = await listAcceptedOffersByProducer(uid);
+        const allOffers = await listActiveOffersByProducer(uid);
 
         let total = 0;
         await Promise.all(
