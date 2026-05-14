@@ -81,12 +81,62 @@ export async function listOffersByDemand(demandId: string): Promise<DemandOffer[
     return snap.docs.map(d => ({ id: d.id, ...d.data() } as DemandOffer));
 }
 
-export async function listOffersByProducer(producerUid: string): Promise<(DemandOffer & { demandUnit: string })[]> {
+export async function listOffersByProducer(producerUid: string): Promise<(DemandOffer & { demandUnit: string; demandProductName: string; demandMaxPricePerUnit: number | null })[]> {
     const snap = await offersCol()
         .where('producerUid', '==', producerUid)
         .orderBy('createdAt', 'desc')
         .get();
 
+    if (snap.empty) return [];
+
+    const demandIds = [...new Set(snap.docs.map(d => d.data().demandId as string))];
+    const demandMap = new Map<string, { unit: string; productName: string; maxPricePerUnit: number | null }>();
+    await Promise.all(demandIds.map(async (did) => {
+        const doc = await db.collection('establishmentDemands').doc(did).get();
+        if (doc.exists) {
+            const data = doc.data()!;
+            demandMap.set(did, {
+                unit:             (data.unit            as string)         ?? 'unidade',
+                productName:      (data.productName     as string)         ?? '',
+                maxPricePerUnit:  (data.maxPricePerUnit as number | null)  ?? null,
+            });
+        }
+    }));
+
+    return snap.docs.map(d => {
+        const offer = { id: d.id, ...d.data() } as DemandOffer;
+        const info = demandMap.get(offer.demandId);
+        return {
+            ...offer,
+            demandUnit:            info?.unit            ?? 'unidade',
+            demandProductName:     info?.productName     ?? '',
+            demandMaxPricePerUnit: info?.maxPricePerUnit ?? null,
+        };
+    });
+}
+
+/** Lista apenas ofertas com status 'accepted' de um produtor (para chat-threads). */
+export async function listAcceptedOffersByProducer(producerUid: string): Promise<DemandOffer[]> {
+    const snap = await offersCol()
+        .where('producerUid', '==', producerUid)
+        .where('status', '==', 'accepted')
+        .orderBy('createdAt', 'desc')
+        .get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as DemandOffer));
+}
+
+/**
+ * Lista todas as ofertas de um produtor que possuem histórico de chat relevante.
+ * Inclui todos os status para que threads com mensagens não desapareçam após confirmação/rejeição.
+ * Inclui demandUnit enriquecido da demanda correspondente.
+ */
+export async function listOffersWithChatByProducer(
+    producerUid: string,
+): Promise<(DemandOffer & { demandUnit: string })[]> {
+    const snap = await offersCol()
+        .where('producerUid', '==', producerUid)
+        .orderBy('createdAt', 'desc')
+        .get();
     if (snap.empty) return [];
 
     const demandIds = [...new Set(snap.docs.map(d => d.data().demandId as string))];
@@ -100,16 +150,6 @@ export async function listOffersByProducer(producerUid: string): Promise<(Demand
         const offer = { id: d.id, ...d.data() } as DemandOffer;
         return { ...offer, demandUnit: demandMap.get(offer.demandId) ?? 'unidade' };
     });
-}
-
-/** Lista apenas ofertas com status 'accepted' de um produtor (para chat-threads). */
-export async function listAcceptedOffersByProducer(producerUid: string): Promise<DemandOffer[]> {
-    const snap = await offersCol()
-        .where('producerUid', '==', producerUid)
-        .where('status', '==', 'accepted')
-        .orderBy('createdAt', 'desc')
-        .get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as DemandOffer));
 }
 
 /**
@@ -167,6 +207,33 @@ export async function listActiveOffersByEstablishment(
     const snap = await offersCol()
         .where('establishmentUid', '==', establishmentUid)
         .where('status', 'in', ['pending', 'accepted'])
+        .orderBy('createdAt', 'desc')
+        .get();
+    if (snap.empty) return [];
+
+    const demandIds = [...new Set(snap.docs.map(d => d.data().demandId as string))];
+    const demandMap = new Map<string, string>();
+    await Promise.all(demandIds.map(async (did) => {
+        const doc = await db.collection('establishmentDemands').doc(did).get();
+        if (doc.exists) demandMap.set(did, (doc.data()?.unit as string) ?? 'unidade');
+    }));
+
+    return snap.docs.map(d => {
+        const offer = { id: d.id, ...d.data() } as DemandOffer;
+        return { ...offer, demandUnit: demandMap.get(offer.demandId) ?? 'unidade' };
+    });
+}
+
+/**
+ * Lista todas as ofertas com histórico de chat de um estabelecimento.
+ * Inclui todos os status para que threads não desapareçam após confirmação/rejeição.
+ * Inclui demandUnit enriquecido da demanda correspondente.
+ */
+export async function listOffersWithChatByEstablishment(
+    establishmentUid: string,
+): Promise<(DemandOffer & { demandUnit: string })[]> {
+    const snap = await offersCol()
+        .where('establishmentUid', '==', establishmentUid)
         .orderBy('createdAt', 'desc')
         .get();
     if (snap.empty) return [];

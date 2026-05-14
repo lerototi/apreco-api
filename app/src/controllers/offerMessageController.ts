@@ -23,11 +23,12 @@ import { Request, Response } from 'express';
 import {
     listMessagesByOffer,
     createMessage,
+    createSystemMessage,
     markAllAsRead,
     countUnreadForOffer,
     getLastMessageForOffer,
 } from '../models/offerMessage';
-import { findOffer, listOffersByProducer, listOffersByEstablishment, listAcceptedOffersByProducer, listAcceptedOffersByEstablishment, listActiveOffersByProducer, listActiveOffersByEstablishment } from '../models/demandOffer';
+import { findOffer, listOffersByProducer, listOffersByEstablishment, listAcceptedOffersByProducer, listAcceptedOffersByEstablishment, listActiveOffersByProducer, listActiveOffersByEstablishment, listOffersWithChatByEstablishment, listOffersWithChatByProducer } from '../models/demandOffer';
 import { findDemand } from '../models/establishmentDemand';
 import { findRuralProducerProfile } from '../models/profiles/ruralProducer';
 import { findEstablishmentProfile } from '../models/profiles/establishment';
@@ -41,6 +42,38 @@ async function resolveDisplayName(uid: string, role: 'establishment' | 'ruralPro
     }
     const profile = await findRuralProducerProfile(uid);
     return profile?.displayName?.trim() || 'Produtor';
+}
+
+/**
+ * Gera e persiste a mensagem inaugural de uma oferta caso o chat esteja vazio.
+ * Garante retrocompatibilidade com ofertas criadas antes da lógica de msg inaugural.
+ */
+async function ensureInauguralMessage(offerId: string): Promise<void> {
+    const offer = await findOffer(offerId);
+    if (!offer) return;
+
+    const demand = await findDemand(offer.demandId);
+    const unit = demand?.unit ?? 'unidade';
+    const productName = demand?.productName ?? 'Produto';
+    const producerName = offer.producerName || 'Produtor';
+
+    const isByTotal = unit === 'g' || unit === 'mL';
+    const totalValue = isByTotal
+        ? offer.pricePerUnit
+        : offer.pricePerUnit * offer.quantity;
+    const fmtBRL = (v: number) =>
+        v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const priceLabel = isByTotal
+        ? `Valor total: ${fmtBRL(totalValue)}`
+        : `${fmtBRL(offer.pricePerUnit)} / ${unit} · Total: ${fmtBRL(totalValue)}`;
+
+    const introText =
+        `📦 Nova oferta enviada por ${producerName}\n` +
+        `Produto: ${productName}\n` +
+        `Quantidade: ${offer.quantity.toLocaleString('pt-BR')} ${unit}\n` +
+        `${priceLabel}`;
+
+    await createSystemMessage(offerId, offer.demandId, introText);
 }
 
 /**
@@ -88,6 +121,12 @@ export async function estGetMessages(req: Request, res: Response): Promise<void>
         const { offerId } = req.params as { offerId: string };
         const access = await validateEstablishmentAccess(req, res, offerId);
         if (!access) return;
+
+        // Garante mensagem inaugural para ofertas antigas sem histórico
+        const existingMessages = await listMessagesByOffer(offerId);
+        if (existingMessages.length === 0) {
+            await ensureInauguralMessage(offerId).catch(() => {});
+        }
 
         const [messages] = await Promise.all([
             listMessagesByOffer(offerId),
@@ -156,12 +195,15 @@ export async function estMarkRead(req: Request, res: Response): Promise<void> {
 export async function estGetChatThreads(req: Request, res: Response): Promise<void> {
     try {
         const uid = req.user.uid;
-        const allOffers = await listActiveOffersByEstablishment(uid);
+        const allOffers = await listOffersWithChatByEstablishment(uid);
 
-        const threads = await Promise.all(
+        const threadResults = await Promise.all(
             allOffers.map(async (offer) => {
-                const demand = await findDemand(offer.demandId);
                 const lastMsg = await getLastMessageForOffer(offer.id);
+                // Só inclui threads que têm pelo menos uma mensagem
+                if (!lastMsg) return null;
+
+                const demand = await findDemand(offer.demandId);
                 const unread = await countUnreadForOffer(offer.id, uid);
 
                 return {
@@ -170,8 +212,8 @@ export async function estGetChatThreads(req: Request, res: Response): Promise<vo
                     demandProductName: demand?.productName ?? '',
                     otherPartyName:    offer.producerName,
                     otherPartyRole:    'ruralProducer' as const,
-                    lastMessage:       lastMsg?.text ?? null,
-                    lastMessageAt:     lastMsg?.createdAt ?? null,
+                    lastMessage:       lastMsg.text,
+                    lastMessageAt:     lastMsg.createdAt,
                     unreadCount:       unread,
                     offerStatus:       offer.status,
                     offerPricePerUnit: offer.pricePerUnit,
@@ -181,13 +223,10 @@ export async function estGetChatThreads(req: Request, res: Response): Promise<vo
             })
         );
 
-        // Ordena: threads com mensagens primeiro, depois por data da última mensagem
-        threads.sort((a, b) => {
-            if (!a.lastMessageAt && !b.lastMessageAt) return 0;
-            if (!a.lastMessageAt) return 1;
-            if (!b.lastMessageAt) return -1;
-            return b.lastMessageAt.localeCompare(a.lastMessageAt);
-        });
+        const threads = threadResults.filter(Boolean);
+
+        // Ordena: mais recente primeiro por data da última mensagem
+        threads.sort((a, b) => b!.lastMessageAt.localeCompare(a!.lastMessageAt));
 
         res.json({ threads });
     } catch (e) {
@@ -202,7 +241,7 @@ export async function estGetChatThreads(req: Request, res: Response): Promise<vo
 export async function estUnreadCount(req: Request, res: Response): Promise<void> {
     try {
         const uid = req.user.uid;
-        const allOffers = await listActiveOffersByEstablishment(uid);
+        const allOffers = await listOffersWithChatByEstablishment(uid);
 
         let total = 0;
         await Promise.all(
@@ -229,6 +268,12 @@ export async function producerGetMessages(req: Request, res: Response): Promise<
         const { offerId } = req.params as { offerId: string };
         const access = await validateProducerAccess(req, res, offerId);
         if (!access) return;
+
+        // Garante mensagem inaugural para ofertas antigas sem histórico
+        const existingMessages = await listMessagesByOffer(offerId);
+        if (existingMessages.length === 0) {
+            await ensureInauguralMessage(offerId).catch(() => {});
+        }
 
         const [messages] = await Promise.all([
             listMessagesByOffer(offerId),
@@ -297,12 +342,15 @@ export async function producerMarkRead(req: Request, res: Response): Promise<voi
 export async function producerGetChatThreads(req: Request, res: Response): Promise<void> {
     try {
         const uid = req.user.uid;
-        const allOffers = await listActiveOffersByProducer(uid);
+        const allOffers = await listOffersWithChatByProducer(uid);
 
-        const threads = await Promise.all(
+        const threadResults = await Promise.all(
             allOffers.map(async (offer) => {
-                const demand = await findDemand(offer.demandId);
                 const lastMsg = await getLastMessageForOffer(offer.id);
+                // Só inclui threads que têm pelo menos uma mensagem
+                if (!lastMsg) return null;
+
+                const demand = await findDemand(offer.demandId);
                 const unread = await countUnreadForOffer(offer.id, uid);
 
                 const estProfile = await findEstablishmentProfile(offer.establishmentUid);
@@ -316,8 +364,8 @@ export async function producerGetChatThreads(req: Request, res: Response): Promi
                     demandProductName: demand?.productName ?? '',
                     otherPartyName:    estName,
                     otherPartyRole:    'establishment' as const,
-                    lastMessage:       lastMsg?.text ?? null,
-                    lastMessageAt:     lastMsg?.createdAt ?? null,
+                    lastMessage:       lastMsg.text,
+                    lastMessageAt:     lastMsg.createdAt,
                     unreadCount:       unread,
                     offerStatus:       offer.status,
                     offerPricePerUnit: offer.pricePerUnit,
@@ -327,12 +375,10 @@ export async function producerGetChatThreads(req: Request, res: Response): Promi
             })
         );
 
-        threads.sort((a, b) => {
-            if (!a.lastMessageAt && !b.lastMessageAt) return 0;
-            if (!a.lastMessageAt) return 1;
-            if (!b.lastMessageAt) return -1;
-            return b.lastMessageAt.localeCompare(a.lastMessageAt);
-        });
+        const threads = threadResults.filter(Boolean);
+
+        // Ordena: mais recente primeiro por data da última mensagem
+        threads.sort((a, b) => b!.lastMessageAt.localeCompare(a!.lastMessageAt));
 
         res.json({ threads });
     } catch (e) {
@@ -347,7 +393,7 @@ export async function producerGetChatThreads(req: Request, res: Response): Promi
 export async function producerUnreadCount(req: Request, res: Response): Promise<void> {
     try {
         const uid = req.user.uid;
-        const allOffers = await listActiveOffersByProducer(uid);
+        const allOffers = await listOffersWithChatByProducer(uid);
 
         let total = 0;
         await Promise.all(
