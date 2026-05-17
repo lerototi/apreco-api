@@ -146,10 +146,19 @@ export async function listDemandsByEstablishment(
 }
 
 export async function listOpenDemands(): Promise<EstablishmentDemand[]> {
+    // Demandas visíveis no marketplace: 'open' e 'negotiating'
+    // (negociação em andamento não bloqueia novos produtores de ofertar)
     // Recorrentes não têm deadline — buscadas separadamente e mescladas no topo
-    const [recurringSnap, pontualSnap] = await Promise.all([
+    const VISIBLE = ['open', 'negotiating'] as const;
+
+    const [recurringOpen, recurringNeg, pontualOpen, pontualNeg] = await Promise.all([
         demandsCol()
             .where('status', '==', 'open')
+            .where('isRecurring', '==', true)
+            .orderBy('createdAt', 'desc')
+            .get(),
+        demandsCol()
+            .where('status', '==', 'negotiating')
             .where('isRecurring', '==', true)
             .orderBy('createdAt', 'desc')
             .get(),
@@ -158,9 +167,21 @@ export async function listOpenDemands(): Promise<EstablishmentDemand[]> {
             .where('isRecurring', '==', false)
             .orderBy('deadline', 'asc')
             .get(),
+        demandsCol()
+            .where('status', '==', 'negotiating')
+            .where('isRecurring', '==', false)
+            .orderBy('deadline', 'asc')
+            .get(),
     ]);
-    const recurring = recurringSnap.docs.map(d => ({ id: d.id, ...d.data() } as EstablishmentDemand));
-    const pontual   = pontualSnap.docs.map(d => ({ id: d.id, ...d.data() } as EstablishmentDemand));
+
+    void VISIBLE; // used for documentation only
+
+    const toList = (snap: FirebaseFirestore.QuerySnapshot) =>
+        snap.docs.map(d => ({ id: d.id, ...d.data() } as EstablishmentDemand));
+
+    // Recorrentes primeiro (open antes de negotiating), depois pontuais (idem)
+    const recurring = [...toList(recurringOpen), ...toList(recurringNeg)];
+    const pontual   = [...toList(pontualOpen),   ...toList(pontualNeg)];
     return [...recurring, ...pontual];
 }
 

@@ -138,7 +138,8 @@ export async function getOfferDetail(req: Request, res: Response): Promise<void>
 /**
  * POST /establishment/offers/:offerId/accept
  * Establishment aceita iniciar negociação com o produtor.
- * Demanda passa para status 'negotiating'.
+ * A demanda permanece 'open' — múltiplas ofertas podem ser negociadas em paralelo.
+ * O status da demanda só muda quando ofertas são confirmadas (ver confirmOffer).
  */
 export async function acceptOffer(req: Request, res: Response): Promise<void> {
     try {
@@ -156,10 +157,7 @@ export async function acceptOffer(req: Request, res: Response): Promise<void> {
             res.status(409).json({ error: 'Apenas ofertas pendentes podem ser aceitas.' }); return;
         }
 
-        const [updated] = await Promise.all([
-            updateOfferStatus(offerId, 'accepted'),
-            updateDemandStatus(offer.demandId, 'negotiating'),
-        ]);
+        const updated = await updateOfferStatus(offerId, 'accepted');
 
         res.json({ offer: updated });
     } catch (e) {
@@ -190,11 +188,6 @@ export async function rejectOffer(req: Request, res: Response): Promise<void> {
 
         const updated = await updateOfferStatus(offerId, 'rejected');
 
-        // Se a oferta estava aceita, a demanda estava em 'negotiating' — devolve para 'open'
-        if (offer.status === 'accepted') {
-            await updateDemandStatus(offer.demandId, 'open').catch(() => {/* não impede a resposta */});
-        }
-
         // Injeta evento de sistema no chat para que ambas as partes vejam o encerramento
         await createSystemMessage(
             offerId,
@@ -212,7 +205,14 @@ export async function rejectOffer(req: Request, res: Response): Promise<void> {
 /**
  * POST /establishment/offers/:offerId/confirm
  * Negócio fechado: quantidade da oferta é abatida da demanda.
- * Se quantityNeeded for totalmente atendida, demanda passa para 'closed'.
+ *
+ * Regras de status da demanda após confirmação:
+ *   - Se quantityConfirmed >= quantityNeeded → demanda fecha ('closed')
+ *     - Demandas NÃO recorrentes: permanecem fechadas.
+ *     - Demandas recorrentes: TODO — reabrir automaticamente conforme periodicidade
+ *       configurada pelo estabelecimento (feature futura; por ora também ficam 'closed').
+ *   - Se quantityConfirmed < quantityNeeded → demanda volta para 'open'
+ *     (aceita novas ofertas de outros produtores até completar o total solicitado).
  */
 export async function confirmOffer(req: Request, res: Response): Promise<void> {
     try {
@@ -233,8 +233,17 @@ export async function confirmOffer(req: Request, res: Response): Promise<void> {
         const updated = await updateOfferStatus(offerId, 'confirmed');
 
         const stats = await getDemandOfferStats(offer.demandId);
-        if (stats.quantityConfirmed >= demand.quantityNeeded) {
+        const fullyFulfilled = stats.quantityConfirmed >= demand.quantityNeeded;
+
+        if (fullyFulfilled) {
+            // Demanda totalmente atendida → fecha (recorrente ou não)
+            // TODO(feature): demandas recorrentes devem reabrir automaticamente conforme
+            // periodicidade configurada pelo estabelecimento. Por ora ficam 'closed' como
+            // demandas pontuais. Implementar quando o campo `recurrencePeriod` for adicionado.
             await updateDemandStatus(offer.demandId, 'closed');
+        } else {
+            // Ainda há quantidade a atender → volta para 'open' (aceita mais ofertas)
+            await updateDemandStatus(offer.demandId, 'open');
         }
 
         // Injeta evento de sistema no chat
@@ -339,11 +348,6 @@ export async function cancelOffer(req: Request, res: Response): Promise<void> {
         await cancelOfferByProducer(offerId, producerUid);
 
         if (offerBefore) {
-            // Se estava aceita, a demanda estava em 'negotiating' — devolve para 'open'
-            if (offerBefore.status === 'accepted') {
-                await updateDemandStatus(offerBefore.demandId, 'open').catch(() => {});
-            }
-
             await createSystemMessage(
                 offerId,
                 offerBefore.demandId,

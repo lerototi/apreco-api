@@ -355,6 +355,8 @@ describe('producerGetChatThreads', () => {
     it('retorna threads ativas do produtor', async () => {
         seedDemand();
         seedOffer();
+        // Threads só aparecem quando há pelo menos uma mensagem no chat
+        seedMessage('msg-thread-001', 'Olá, tenho interesse!', PRODUCER_UID, 'ruralProducer', true);
 
         const req = makeRequest({ user: { uid: PRODUCER_UID }, params: {} });
         const res = makeResponse();

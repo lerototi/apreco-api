@@ -176,7 +176,7 @@ describe('getOfferDetail', () => {
 // ─── acceptOffer ──────────────────────────────────────────────────────────────
 
 describe('acceptOffer', () => {
-  it('aceita oferta pending com sucesso → status accepted, demanda vira negotiating', async () => {
+  it('aceita oferta pending com sucesso → status accepted, demanda permanece open', async () => {
     seedDemand({ status: 'open' });
     seedOffer({ status: 'pending' });
 
@@ -188,8 +188,10 @@ describe('acceptOffer', () => {
     const returned = (res.json as jest.Mock).mock.calls[0][0];
     expect(returned.offer.status).toBe('accepted');
 
+    // A demanda permanece 'open' — múltiplas ofertas podem ser negociadas em paralelo.
+    // Status só muda quando confirmOffer é chamado.
     const demandInStore = firestoreStore.get(`establishmentDemands/${DEMAND_ID}`) as Record<string, unknown>;
-    expect(demandInStore.status).toBe('negotiating');
+    expect(demandInStore.status).toBe('open');
   });
 
   it('retorna 409 quando oferta já está accepted', async () => {
@@ -254,7 +256,7 @@ describe('rejectOffer', () => {
     expect(returned.offer.status).toBe('rejected');
   });
 
-  it('rejeita oferta accepted (volta atrás da negociação)', async () => {
+  it('rejeita oferta accepted sem alterar status da demanda', async () => {
     seedDemand({ status: 'negotiating' });
     seedOffer({ status: 'accepted' });
 
@@ -265,8 +267,9 @@ describe('rejectOffer', () => {
 
     const returned = (res.json as jest.Mock).mock.calls[0][0];
     expect(returned.offer.status).toBe('rejected');
+    // A demanda NÃO é restaurada para 'open' — apenas confirmOffer altera o status da demanda
     const demandInStore = firestoreStore.get(`establishmentDemands/${DEMAND_ID}`) as Record<string, unknown>;
-    expect(demandInStore.status).toBe('open');
+    expect(demandInStore.status).toBe('negotiating');
   });
 
   it('injeta mensagem de sistema no chat ao rejeitar oferta', async () => {
@@ -325,6 +328,36 @@ describe('confirmOffer', () => {
     const returned = (res.json as jest.Mock).mock.calls[0][0];
     expect(returned.offer.status).toBe('confirmed');
     expect(returned).toHaveProperty('stats');
+  });
+
+  it('devolve demanda para open quando quantityConfirmed < quantityNeeded', async () => {
+    seedDemand({ quantityNeeded: 100, status: 'negotiating' });
+    seedOffer({ status: 'accepted', quantity: 10 });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await confirmOffer(req, res);
+
+    expect(res.status).not.toHaveBeenCalled();
+    const demandInStore = firestoreStore.get(`establishmentDemands/${DEMAND_ID}`) as Record<string, unknown>;
+    expect(demandInStore.status).toBe('open');
+  });
+
+  it('fecha demanda recorrente quando quantityConfirmed >= quantityNeeded (reabertura automática é feature futura)', async () => {
+    // TODO(feature): quando periodicidade for implementada, demandas recorrentes devem reabrir
+    // automaticamente. Por ora fecham igual às pontuais.
+    seedDemand({ quantityNeeded: 10, isRecurring: true, status: 'negotiating' });
+    seedOffer({ status: 'accepted', quantity: 10 });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await confirmOffer(req, res);
+
+    expect(res.status).not.toHaveBeenCalled();
+    const demandInStore = firestoreStore.get(`establishmentDemands/${DEMAND_ID}`) as Record<string, unknown>;
+    expect(demandInStore.status).toBe('closed');
   });
 
   it('injeta mensagem de sistema no chat ao confirmar oferta', async () => {
@@ -502,7 +535,7 @@ describe('cancelOffer', () => {
     expect(allMessages.some(m => m.authorRole === 'system')).toBe(true);
   });
 
-  it('devolve demanda para open ao cancelar oferta accepted', async () => {
+  it('não altera status da demanda ao cancelar oferta accepted', async () => {
     seedDemand({ status: 'negotiating' });
     seedOffer({ producerUid: EST_UID, status: 'accepted' });
 
@@ -512,8 +545,9 @@ describe('cancelOffer', () => {
     await cancelOffer(req, res);
 
     expect(res.status).toHaveBeenCalledWith(204);
+    // A demanda NÃO é restaurada — apenas confirmOffer altera status da demanda
     const demandInStore = firestoreStore.get(`establishmentDemands/${DEMAND_ID}`) as Record<string, unknown>;
-    expect(demandInStore.status).toBe('open');
+    expect(demandInStore.status).toBe('negotiating');
   });
 
   it('retorna 403 ao tentar cancelar oferta de outro produtor', async () => {
