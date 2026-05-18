@@ -220,11 +220,12 @@ async function respondProposal(
         const updated = await respondToProposal(proposalId, action === 'accept' ? 'accepted' : 'rejected');
 
         if (action === 'accept') {
-            // Atualiza os valores da oferta no Firestore
+            // Atualiza os valores da oferta e confirma o negócio
             const now = new Date().toISOString();
             await db.collection('ruralProducerOffers').doc(offerId).update({
                 pricePerUnit: proposal.proposedPrice,
                 quantity:     proposal.proposedQuantity,
+                status:       'confirmed',
                 updatedAt:    now,
             });
         }
