@@ -12,17 +12,14 @@
  *   DELETE /establishment/demands/:demandId               → cancela demanda
  *
  * Ofertas (visão do estabelecimento):
- *   GET    /establishment/pending-offers                  → todas ofertas pending/accepted cross-demands
+ *   GET    /establishment/pending-offers                  → todas ofertas pending/negotiating cross-demands
  *   GET    /establishment/demands/:demandId/offers        → lista ofertas da demanda
  *   GET    /establishment/offers/:offerId                 → detalhe de oferta
- *   POST   /establishment/offers/:offerId/accept          → aceita negociação
+ *   POST   /establishment/offers/:offerId/accept          → aceita diretamente (pending/negotiating → accepted)
+ *   POST   /establishment/offers/:offerId/negotiate       → propõe novos termos (→ negotiating)
  *   POST   /establishment/offers/:offerId/reject          → recusa oferta
- *   POST   /establishment/offers/:offerId/confirm         → confirma negócio fechado
  *
- * Propostas de negociação:
- *   GET    /establishment/offers/:offerId/proposals                     → histórico de propostas
- *   POST   /establishment/offers/:offerId/proposals                     → faz nova proposta
- *   POST   /establishment/offers/:offerId/proposals/:proposalId/respond → aceita ou recusa proposta
+ * Propostas de negociação: REMOVIDAS — negociação agora acontece dentro da própria oferta
  *
  * Chat (mensagens de negociação):
  *   GET    /establishment/chat-threads                    → lista threads ativas
@@ -37,7 +34,6 @@ import { authenticate } from '../middleware/auth';
 import * as demandController from '../controllers/demandController';
 import * as offerController from '../controllers/offerController';
 import * as offerMessageController from '../controllers/offerMessageController';
-import * as negotiationController from '../controllers/negotiationProposalController';
 
 const router = Router();
 
@@ -54,13 +50,8 @@ router.get('/all-offers',                             authenticate, offerControl
 router.get('/demands/:demandId/offers',               authenticate, offerController.getOffersForDemand);
 router.get('/offers/:offerId',                        authenticate, offerController.getOfferDetail);
 router.post('/offers/:offerId/accept',                authenticate, offerController.acceptOffer);
+router.post('/offers/:offerId/negotiate',             authenticate, offerController.negotiateOfferHandler);
 router.post('/offers/:offerId/reject',                authenticate, offerController.rejectOffer);
-router.post('/offers/:offerId/confirm',               authenticate, offerController.confirmOffer);
-
-// ─── Propostas de negociação ──────────────────────────────────────────────────
-router.get('/offers/:offerId/proposals',                             authenticate, negotiationController.estGetProposals);
-router.post('/offers/:offerId/proposals',                            authenticate, negotiationController.estSubmitProposal);
-router.post('/offers/:offerId/proposals/:proposalId/respond',        authenticate, negotiationController.estRespondProposal);
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 router.get('/chat-threads',                           authenticate, offerMessageController.estGetChatThreads);

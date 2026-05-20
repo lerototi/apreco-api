@@ -9,19 +9,19 @@
  *   - Listagem de todas as ofertas de uma demanda sem collectionGroup
  *   - Deleção/cancelamento independente do ciclo de vida da demanda
  *
- * Status da oferta:
- *   pending     → aguardando resposta do estabelecimento
- *   accepted    → estabelecimento aceitou iniciar negociação
- *   rejected    → estabelecimento recusou
- *   confirmed   → negócio fechado, quantidade abatida da demanda
- *   cancelled   → produtor cancelou a oferta
+ * Ciclo de vida da oferta:
+ *   pending     → produtor enviou, aguardando resposta do estabelecimento
+ *   negotiating → estabelecimento quer negociar (termos em negotiatingPrice/Qty/Note)
+ *   accepted    → negócio fechado (estab. aceitou diretamente, ou produtor aceitou negociação)
+ *   rejected    → recusado por qualquer parte (produtor pode submeter nova oferta)
+ *   cancelled   → produtor cancelou antes de qualquer desfecho
  */
 
 import { db } from '../config/firebase';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-export type OfferStatus = 'pending' | 'accepted' | 'rejected' | 'confirmed' | 'cancelled';
+export type OfferStatus = 'pending' | 'negotiating' | 'accepted' | 'rejected' | 'cancelled';
 
 export interface DemandOffer {
     id: string;
@@ -45,6 +45,17 @@ export interface DemandOffer {
     message: string | null;
 
     status: OfferStatus;
+
+    /**
+     * Termos propostos pelo estabelecimento ao iniciar negociação.
+     * Presentes apenas quando status === 'negotiating'.
+     * Ao aceitar (negotiating → accepted), esses valores sobrescrevem
+     * pricePerUnit e quantity como os termos oficiais do acordo.
+     */
+    negotiatingPrice?: number | null;
+    negotiatingQuantity?: number | null;
+    negotiatingNote?: string | null;
+    negotiatingAt?: string | null;
 
     createdAt: string;
     updatedAt: string;
@@ -115,20 +126,9 @@ export async function listOffersByProducer(producerUid: string): Promise<(Demand
     });
 }
 
-/** Lista apenas ofertas com status 'accepted' de um produtor (para chat-threads). */
-export async function listAcceptedOffersByProducer(producerUid: string): Promise<DemandOffer[]> {
-    const snap = await offersCol()
-        .where('producerUid', '==', producerUid)
-        .where('status', '==', 'accepted')
-        .orderBy('createdAt', 'desc')
-        .get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as DemandOffer));
-}
-
 /**
  * Lista todas as ofertas de um produtor que possuem histórico de chat relevante.
- * Inclui todos os status para que threads com mensagens não desapareçam após confirmação/rejeição.
- * Inclui demandUnit enriquecido da demanda correspondente.
+ * Inclui todos os status para que threads com mensagens não desapareçam após o desfecho.
  */
 export async function listOffersWithChatByProducer(
     producerUid: string,
@@ -153,15 +153,14 @@ export async function listOffersWithChatByProducer(
 }
 
 /**
- * Lista ofertas ativas (pending + accepted) de um produtor para chat-threads.
- * Inclui demandUnit enriquecido da demanda correspondente.
+ * Lista ofertas ativas (pending + negotiating) de um produtor para chat-threads.
  */
 export async function listActiveOffersByProducer(
     producerUid: string,
 ): Promise<(DemandOffer & { demandUnit: string })[]> {
     const snap = await offersCol()
         .where('producerUid', '==', producerUid)
-        .where('status', 'in', ['pending', 'accepted'])
+        .where('status', 'in', ['pending', 'negotiating'])
         .orderBy('createdAt', 'desc')
         .get();
     if (snap.empty) return [];
@@ -187,26 +186,15 @@ export async function listOffersByEstablishment(establishmentUid: string): Promi
     return snap.docs.map(d => ({ id: d.id, ...d.data() } as DemandOffer));
 }
 
-/** Lista apenas ofertas com status 'accepted' de um estabelecimento (para chat-threads). */
-export async function listAcceptedOffersByEstablishment(establishmentUid: string): Promise<DemandOffer[]> {
-    const snap = await offersCol()
-        .where('establishmentUid', '==', establishmentUid)
-        .where('status', '==', 'accepted')
-        .orderBy('createdAt', 'desc')
-        .get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as DemandOffer));
-}
-
 /**
- * Lista ofertas ativas (pending + accepted) de um estabelecimento para chat-threads.
- * Inclui demandUnit enriquecido da demanda correspondente.
+ * Lista ofertas ativas (pending + negotiating) de um estabelecimento para chat-threads.
  */
 export async function listActiveOffersByEstablishment(
     establishmentUid: string,
 ): Promise<(DemandOffer & { demandUnit: string })[]> {
     const snap = await offersCol()
         .where('establishmentUid', '==', establishmentUid)
-        .where('status', 'in', ['pending', 'accepted'])
+        .where('status', 'in', ['pending', 'negotiating'])
         .orderBy('createdAt', 'desc')
         .get();
     if (snap.empty) return [];
@@ -226,8 +214,6 @@ export async function listActiveOffersByEstablishment(
 
 /**
  * Lista todas as ofertas com histórico de chat de um estabelecimento.
- * Inclui todos os status para que threads não desapareçam após confirmação/rejeição.
- * Inclui demandUnit enriquecido da demanda correspondente.
  */
 export async function listOffersWithChatByEstablishment(
     establishmentUid: string,
@@ -252,21 +238,20 @@ export async function listOffersWithChatByEstablishment(
 }
 
 /**
- * Lista todas as ofertas com status 'pending' ou 'accepted' de um estabelecimento.
- * Retorna também o nome do insumo da demanda para exibição na tela.
+ * Lista todas as ofertas com status 'pending' ou 'negotiating' de um estabelecimento.
+ * Retorna também o nome do produto da demanda para exibição na tela.
  */
 export async function listPendingOffersByEstablishment(
     establishmentUid: string,
 ): Promise<(DemandOffer & { demandProductName: string; demandUnit: string })[]> {
     const snap = await offersCol()
         .where('establishmentUid', '==', establishmentUid)
-        .where('status', 'in', ['pending', 'accepted'])
+        .where('status', 'in', ['pending', 'negotiating'])
         .orderBy('createdAt', 'asc')
         .get();
 
     if (snap.empty) return [];
 
-    // Busca nomes dos produtos das demandas envolvidas
     const demandIds = [...new Set(snap.docs.map(d => d.data().demandId as string))];
     const demandMap = new Map<string, { name: string; unit: string }>();
 
@@ -290,8 +275,8 @@ export async function listPendingOffersByEstablishment(
         };
     });
 
-    // pending primeiro, depois accepted; dentro de cada grupo: mais antigas primeiro
-    const ORDER = { pending: 0, accepted: 1, confirmed: 2, rejected: 3, cancelled: 4 };
+    // pending primeiro, depois negotiating; dentro de cada grupo: mais antigas primeiro
+    const ORDER: Record<string, number> = { pending: 0, negotiating: 1, accepted: 2, rejected: 3, cancelled: 4 };
     results.sort((a, b) =>
         (ORDER[a.status] - ORDER[b.status]) ||
         a.createdAt.localeCompare(b.createdAt)
@@ -302,8 +287,7 @@ export async function listPendingOffersByEstablishment(
 
 /**
  * Lista TODAS as ofertas de um estabelecimento (todos os status).
- * Retorna também o nome do insumo da demanda para exibição na tela.
- * Ordem: pending → accepted → confirmed → rejected → cancelled; dentro de cada grupo: mais recentes primeiro.
+ * Ordem: pending → negotiating → accepted → rejected → cancelled; dentro de cada grupo: mais recentes primeiro.
  */
 export async function listAllOffersByEstablishment(
     establishmentUid: string,
@@ -335,7 +319,7 @@ export async function listAllOffersByEstablishment(
         };
     });
 
-    const ORDER = { pending: 0, accepted: 1, confirmed: 2, rejected: 3, cancelled: 4 };
+    const ORDER: Record<string, number> = { pending: 0, negotiating: 1, accepted: 2, rejected: 3, cancelled: 4 };
     results.sort((a, b) =>
         (ORDER[a.status] - ORDER[b.status]) ||
         b.createdAt.localeCompare(a.createdAt),
@@ -388,6 +372,78 @@ export async function updateOfferStatus(
     return updated;
 }
 
+/**
+ * Move a oferta para 'negotiating' e armazena os termos propostos pelo estabelecimento.
+ * Os valores originais do produtor (pricePerUnit, quantity) são preservados.
+ */
+export async function negotiateOffer(
+    offerId: string,
+    negotiatingPrice: number,
+    negotiatingQuantity: number,
+    negotiatingNote: string | null,
+): Promise<DemandOffer> {
+    const now = new Date().toISOString();
+    await offersCol().doc(offerId).update({
+        status:             'negotiating',
+        negotiatingPrice,
+        negotiatingQuantity,
+        negotiatingNote:    negotiatingNote ?? null,
+        negotiatingAt:      now,
+        updatedAt:          now,
+    });
+    const updated = await findOffer(offerId);
+    if (!updated) throw new Error('Offer not found after update.');
+    return updated;
+}
+
+/**
+ * Produtor aceita os termos de negociação do estabelecimento.
+ * Os valores propostos (negotiatingPrice, negotiatingQuantity) sobrescrevem
+ * pricePerUnit e quantity como termos oficiais do acordo.
+ */
+export async function acceptNegotiation(offerId: string): Promise<DemandOffer> {
+    const offer = await findOffer(offerId);
+    if (!offer) throw new Error('Offer not found.');
+    if (offer.status !== 'negotiating') throw new Error('Offer is not in negotiating status.');
+
+    const now = new Date().toISOString();
+    await offersCol().doc(offerId).update({
+        status:       'accepted',
+        pricePerUnit: offer.negotiatingPrice  ?? offer.pricePerUnit,
+        quantity:     offer.negotiatingQuantity ?? offer.quantity,
+        updatedAt:    now,
+    });
+    const updated = await findOffer(offerId);
+    if (!updated) throw new Error('Offer not found after update.');
+    return updated;
+}
+
+/**
+ * Produtor resubmete uma oferta rejeitada com novos termos.
+ * Reseta para 'pending', atualiza pricePerUnit/quantity/message
+ * e limpa todos os campos de negociação anteriores.
+ */
+export async function resubmitOffer(
+    offerId: string,
+    data: DemandOfferInput,
+): Promise<DemandOffer> {
+    const now = new Date().toISOString();
+    await offersCol().doc(offerId).update({
+        status:              'pending',
+        pricePerUnit:        data.pricePerUnit,
+        quantity:            data.quantity,
+        message:             data.message ?? null,
+        negotiatingPrice:    null,
+        negotiatingQuantity: null,
+        negotiatingNote:     null,
+        negotiatingAt:       null,
+        updatedAt:           now,
+    });
+    const updated = await findOffer(offerId);
+    if (!updated) throw new Error('Offer not found after resubmit.');
+    return updated;
+}
+
 export async function cancelOfferByProducer(
     offerId: string,
     producerUid: string,
@@ -395,7 +451,7 @@ export async function cancelOfferByProducer(
     const offer = await findOffer(offerId);
     if (!offer)                            throw new Error('Offer not found.');
     if (offer.producerUid !== producerUid) throw new Error('Forbidden.');
-    if (offer.status === 'confirmed')      throw new Error('Cannot cancel a confirmed offer.');
+    if (offer.status === 'accepted')       throw new Error('Cannot cancel an accepted offer.');
     await updateOfferStatus(offerId, 'cancelled');
 }
 
@@ -405,17 +461,17 @@ export async function cancelOfferByProducer(
 export async function getDemandOfferStats(demandId: string): Promise<{
     offerCount: number;
     quantityOffered: number;
-    quantityConfirmed: number;
+    quantityAccepted: number;
 }> {
     const offers = await listOffersByDemand(demandId);
     const nonCancelled = offers.filter(o => o.status !== 'rejected' && o.status !== 'cancelled');
     return {
-        offerCount:        offers.length,          // total real incluindo histórico
+        offerCount:        offers.length,
         quantityOffered:   nonCancelled
-            .filter(o => o.status === 'pending' || o.status === 'accepted')
+            .filter(o => o.status === 'pending' || o.status === 'negotiating')
             .reduce((sum, o) => sum + o.quantity, 0),
-        quantityConfirmed: nonCancelled
-            .filter(o => o.status === 'confirmed')
+        quantityAccepted:  nonCancelled
+            .filter(o => o.status === 'accepted')
             .reduce((sum, o) => sum + o.quantity, 0),
     };
 }

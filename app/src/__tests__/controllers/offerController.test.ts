@@ -4,25 +4,20 @@
  * Cobre:
  *
  * Visão do estabelecimento:
- *  - getOffersForDemand:  lista com stats, demanda não encontrada (404), acesso negado (403)
- *  - getOfferDetail:      oferta encontrada, oferta não encontrada (404), acesso negado (403)
- *  - acceptOffer:         aceita oferta pending → demanda vira negotiating (200),
- *                         oferta já aceita/rejeitada (409)
- *  - rejectOffer:         rejeita oferta pending, rejeita oferta accepted,
- *                         injeta mensagem de sistema no chat,
- *                         oferta já confirmada/cancelada (409)
- *  - confirmOffer:        confirma oferta accepted → retorna stats,
- *                         injeta mensagem de sistema no chat,
- *                         fecha demanda se quantityConfirmed >= quantityNeeded,
- *                         oferta não accepted (409)
+ *  - getOffersForDemand:     lista com stats, 404 demanda, 403 acesso
+ *  - getOfferDetail:         found, 404, 403
+ *  - acceptOffer:            pending → accepted + fecha demanda se total atingido
+ *                            negotiating → accepted
+ *                            status inválido (409)
+ *  - negotiateOfferHandler:  pending → negotiating (200), body inválido (400), 409
+ *  - rejectOffer:            pending/negotiating → rejected, injeta sys-msg, 409 status inválido
  *
  * Visão do produtor (marketplace):
- *  - submitOffer:         envia oferta válida (201), demanda não aberta (404),
- *                         quantity/pricePerUnit <= 0 (400)
- *  - cancelOffer:         cancela oferta própria (204), injeta mensagem de sistema no chat,
- *                         oferta de outro produtor (403),
- *                         oferta já confirmada (409), oferta não encontrada (404)
- *  - getMyOffers:         lista próprias ofertas
+ *  - submitOffer:            201 válido, 400 body inválido, 404 demanda
+ *  - cancelOffer:            204, sys-msg, 403 outro produtor, 409 aceita, 404
+ *  - getMyOffers:            lista próprias ofertas
+ *  - producerAcceptNegotiation: negotiating → accepted, 409, 403, 404
+ *  - producerRejectNegotiation: negotiating → rejected, 409, 403, 404
  */
 
 import { firestoreStore } from '../__mocks__/firebase-module';
@@ -30,11 +25,13 @@ import {
   getOffersForDemand,
   getOfferDetail,
   acceptOffer,
+  negotiateOfferHandler,
   rejectOffer,
-  confirmOffer,
   submitOffer,
   cancelOffer,
   getMyOffers,
+  producerAcceptNegotiation,
+  producerRejectNegotiation,
 } from '../../controllers/offerController';
 import {
   makeRequest,
@@ -96,7 +93,7 @@ describe('getOffersForDemand', () => {
     expect(returned.offers[0].id).toBe(OFFER_ID);
     expect(returned).toHaveProperty('offerCount');
     expect(returned).toHaveProperty('quantityOffered');
-    expect(returned).toHaveProperty('quantityConfirmed');
+    expect(returned).toHaveProperty('quantityAccepted');
   });
 
   it('retorna lista vazia e stats zeradas quando não há ofertas', async () => {
@@ -111,7 +108,7 @@ describe('getOffersForDemand', () => {
     expect(returned.offers).toEqual([]);
     expect(returned.offerCount).toBe(0);
     expect(returned.quantityOffered).toBe(0);
-    expect(returned.quantityConfirmed).toBe(0);
+    expect(returned.quantityAccepted).toBe(0);
   });
 
   it('retorna 404 quando demanda não existe', async () => {
@@ -176,9 +173,26 @@ describe('getOfferDetail', () => {
 // ─── acceptOffer ──────────────────────────────────────────────────────────────
 
 describe('acceptOffer', () => {
-  it('aceita oferta pending com sucesso → status accepted, demanda permanece open', async () => {
-    seedDemand({ status: 'open' });
-    seedOffer({ status: 'pending' });
+  it('aceita oferta pending → status accepted e fecha demanda se atingir total', async () => {
+    seedDemand({ status: 'open', quantityNeeded: 10 });
+    seedOffer({ status: 'pending', quantity: 10 });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await acceptOffer(req, res);
+
+    expect(res.status).not.toHaveBeenCalled();
+    const returned = (res.json as jest.Mock).mock.calls[0][0];
+    expect(returned.offer.status).toBe('accepted');
+
+    const demandInStore = firestoreStore.get(`establishmentDemands/${DEMAND_ID}`) as Record<string, unknown>;
+    expect(demandInStore.status).toBe('closed');
+  });
+
+  it('aceita oferta negotiating → status accepted, demanda volta open se parcial', async () => {
+    seedDemand({ status: 'open', quantityNeeded: 100 });
+    seedOffer({ status: 'negotiating', quantity: 10 });
 
     const req = makeRequest({ params: { offerId: OFFER_ID } });
     const res = makeResponse();
@@ -188,10 +202,23 @@ describe('acceptOffer', () => {
     const returned = (res.json as jest.Mock).mock.calls[0][0];
     expect(returned.offer.status).toBe('accepted');
 
-    // A demanda permanece 'open' — múltiplas ofertas podem ser negociadas em paralelo.
-    // Status só muda quando confirmOffer é chamado.
     const demandInStore = firestoreStore.get(`establishmentDemands/${DEMAND_ID}`) as Record<string, unknown>;
     expect(demandInStore.status).toBe('open');
+  });
+
+  it('injeta mensagem de sistema no chat ao aceitar', async () => {
+    seedDemand({ status: 'open' });
+    seedOffer({ status: 'pending' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await acceptOffer(req, res);
+
+    const allMessages = [...firestoreStore.entries()]
+      .filter(([k]) => k.startsWith('chatMessages/'))
+      .map(([, v]) => v as Record<string, unknown>);
+    expect(allMessages.some(m => m.authorRole === 'system')).toBe(true);
   });
 
   it('retorna 409 quando oferta já está accepted', async () => {
@@ -240,6 +267,113 @@ describe('acceptOffer', () => {
   });
 });
 
+// ─── negotiateOfferHandler ────────────────────────────────────────────────────
+
+describe('negotiateOfferHandler', () => {
+  const validBody = { negotiatingPrice: 9.0, negotiatingQuantity: 8, negotiatingNote: 'Preço ajustado' };
+
+  it('move oferta pending para negotiating com os termos propostos', async () => {
+    seedDemand();
+    seedOffer({ status: 'pending' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID }, body: validBody });
+    const res = makeResponse();
+
+    await negotiateOfferHandler(req, res);
+
+    expect(res.status).not.toHaveBeenCalled();
+    const returned = (res.json as jest.Mock).mock.calls[0][0];
+    expect(returned.offer.status).toBe('negotiating');
+    expect(returned.offer.negotiatingPrice).toBe(9.0);
+    expect(returned.offer.negotiatingQuantity).toBe(8);
+  });
+
+  it('move oferta negotiating para negotiating (renegociação)', async () => {
+    seedDemand();
+    seedOffer({ status: 'negotiating' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID }, body: { negotiatingPrice: 8.5, negotiatingQuantity: 5 } });
+    const res = makeResponse();
+
+    await negotiateOfferHandler(req, res);
+
+    const returned = (res.json as jest.Mock).mock.calls[0][0];
+    expect(returned.offer.status).toBe('negotiating');
+  });
+
+  it('injeta mensagem de sistema no chat', async () => {
+    seedDemand();
+    seedOffer({ status: 'pending' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID }, body: validBody });
+    const res = makeResponse();
+
+    await negotiateOfferHandler(req, res);
+
+    const allMessages = [...firestoreStore.entries()]
+      .filter(([k]) => k.startsWith('chatMessages/'))
+      .map(([, v]) => v as Record<string, unknown>);
+    expect(allMessages.some(m => m.authorRole === 'system')).toBe(true);
+  });
+
+  it('retorna 400 quando negotiatingPrice é zero', async () => {
+    seedDemand();
+    seedOffer({ status: 'pending' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID }, body: { ...validBody, negotiatingPrice: 0 } });
+    const res = makeResponse();
+
+    await negotiateOfferHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('retorna 400 quando negotiatingQuantity está ausente', async () => {
+    seedDemand();
+    seedOffer({ status: 'pending' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID }, body: { negotiatingPrice: 9.0 } });
+    const res = makeResponse();
+
+    await negotiateOfferHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  it('retorna 409 quando oferta está accepted', async () => {
+    seedDemand();
+    seedOffer({ status: 'accepted' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID }, body: validBody });
+    const res = makeResponse();
+
+    await negotiateOfferHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+  });
+
+  it('retorna 404 quando oferta não existe', async () => {
+    const req = makeRequest({ params: { offerId: 'inexistente' }, body: validBody });
+    const res = makeResponse();
+
+    await negotiateOfferHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it('retorna 403 quando demanda pertence a outro estabelecimento', async () => {
+    seedDemand({ establishmentUid: OTHER_UID });
+    seedOffer({ status: 'pending' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID }, body: validBody });
+    const res = makeResponse();
+
+    await negotiateOfferHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+});
+
 // ─── rejectOffer ──────────────────────────────────────────────────────────────
 
 describe('rejectOffer', () => {
@@ -256,9 +390,9 @@ describe('rejectOffer', () => {
     expect(returned.offer.status).toBe('rejected');
   });
 
-  it('rejeita oferta accepted sem alterar status da demanda', async () => {
-    seedDemand({ status: 'negotiating' });
-    seedOffer({ status: 'accepted' });
+  it('rejeita oferta negotiating com sucesso', async () => {
+    seedDemand();
+    seedOffer({ status: 'negotiating' });
 
     const req = makeRequest({ params: { offerId: OFFER_ID } });
     const res = makeResponse();
@@ -267,14 +401,11 @@ describe('rejectOffer', () => {
 
     const returned = (res.json as jest.Mock).mock.calls[0][0];
     expect(returned.offer.status).toBe('rejected');
-    // A demanda NÃO é restaurada para 'open' — apenas confirmOffer altera o status da demanda
-    const demandInStore = firestoreStore.get(`establishmentDemands/${DEMAND_ID}`) as Record<string, unknown>;
-    expect(demandInStore.status).toBe('negotiating');
   });
 
   it('injeta mensagem de sistema no chat ao rejeitar oferta', async () => {
     seedDemand();
-    seedOffer({ status: 'accepted' });
+    seedOffer({ status: 'pending' });
 
     const req = makeRequest({ params: { offerId: OFFER_ID } });
     const res = makeResponse();
@@ -288,9 +419,9 @@ describe('rejectOffer', () => {
     expect(allMessages.some(m => m.authorRole === 'system')).toBe(true);
   });
 
-  it('retorna 409 ao tentar rejeitar oferta já confirmada', async () => {
+  it('retorna 409 ao tentar rejeitar oferta já accepted', async () => {
     seedDemand();
-    seedOffer({ status: 'confirmed' });
+    seedOffer({ status: 'accepted' });
 
     const req = makeRequest({ params: { offerId: OFFER_ID } });
     const res = makeResponse();
@@ -310,108 +441,6 @@ describe('rejectOffer', () => {
     await rejectOffer(req, res);
 
     expect(res.status).toHaveBeenCalledWith(409);
-  });
-});
-
-// ─── confirmOffer ─────────────────────────────────────────────────────────────
-
-describe('confirmOffer', () => {
-  it('confirma oferta accepted com sucesso e retorna stats', async () => {
-    seedDemand({ quantityNeeded: 100, status: 'negotiating' });
-    seedOffer({ status: 'accepted', quantity: 10 });
-
-    const req = makeRequest({ params: { offerId: OFFER_ID } });
-    const res = makeResponse();
-
-    await confirmOffer(req, res);
-
-    const returned = (res.json as jest.Mock).mock.calls[0][0];
-    expect(returned.offer.status).toBe('confirmed');
-    expect(returned).toHaveProperty('stats');
-  });
-
-  it('devolve demanda para open quando quantityConfirmed < quantityNeeded', async () => {
-    seedDemand({ quantityNeeded: 100, status: 'negotiating' });
-    seedOffer({ status: 'accepted', quantity: 10 });
-
-    const req = makeRequest({ params: { offerId: OFFER_ID } });
-    const res = makeResponse();
-
-    await confirmOffer(req, res);
-
-    expect(res.status).not.toHaveBeenCalled();
-    const demandInStore = firestoreStore.get(`establishmentDemands/${DEMAND_ID}`) as Record<string, unknown>;
-    expect(demandInStore.status).toBe('open');
-  });
-
-  it('fecha demanda recorrente quando quantityConfirmed >= quantityNeeded (reabertura automática é feature futura)', async () => {
-    // TODO(feature): quando periodicidade for implementada, demandas recorrentes devem reabrir
-    // automaticamente. Por ora fecham igual às pontuais.
-    seedDemand({ quantityNeeded: 10, isRecurring: true, status: 'negotiating' });
-    seedOffer({ status: 'accepted', quantity: 10 });
-
-    const req = makeRequest({ params: { offerId: OFFER_ID } });
-    const res = makeResponse();
-
-    await confirmOffer(req, res);
-
-    expect(res.status).not.toHaveBeenCalled();
-    const demandInStore = firestoreStore.get(`establishmentDemands/${DEMAND_ID}`) as Record<string, unknown>;
-    expect(demandInStore.status).toBe('closed');
-  });
-
-  it('injeta mensagem de sistema no chat ao confirmar oferta', async () => {
-    seedDemand({ quantityNeeded: 100, status: 'negotiating' });
-    seedOffer({ status: 'accepted', quantity: 10 });
-
-    const req = makeRequest({ params: { offerId: OFFER_ID } });
-    const res = makeResponse();
-
-    await confirmOffer(req, res);
-
-    const allMessages = [...firestoreStore.entries()]
-      .filter(([k]) => k.startsWith('chatMessages/'))
-      .map(([, v]) => v as Record<string, unknown>);
-    expect(allMessages.length).toBeGreaterThanOrEqual(1);
-    expect(allMessages.some(m => m.authorRole === 'system')).toBe(true);
-  });
-
-  it('fecha demanda automaticamente quando quantityConfirmed >= quantityNeeded', async () => {
-    seedDemand({ quantityNeeded: 10, status: 'negotiating' });
-    seedOffer({ status: 'accepted', quantity: 10 });
-
-    const req = makeRequest({ params: { offerId: OFFER_ID } });
-    const res = makeResponse();
-
-    await confirmOffer(req, res);
-
-    expect(res.status).not.toHaveBeenCalled();
-    const demandInStore = firestoreStore.get(`establishmentDemands/${DEMAND_ID}`) as Record<string, unknown>;
-    expect(demandInStore.status).toBe('closed');
-  });
-
-  it('retorna 409 ao tentar confirmar oferta pending', async () => {
-    seedDemand();
-    seedOffer({ status: 'pending' });
-
-    const req = makeRequest({ params: { offerId: OFFER_ID } });
-    const res = makeResponse();
-
-    await confirmOffer(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(409);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringContaining('aceitas') }),
-    );
-  });
-
-  it('retorna 404 quando oferta não existe', async () => {
-    const req = makeRequest({ params: { offerId: 'inexistente' } });
-    const res = makeResponse();
-
-    await confirmOffer(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(404);
   });
 });
 
@@ -519,9 +548,20 @@ describe('cancelOffer', () => {
     expect(res.status).toHaveBeenCalledWith(204);
   });
 
+  it('cancela oferta negotiating do próprio produtor (204)', async () => {
+    seedOffer({ producerUid: EST_UID, status: 'negotiating' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await cancelOffer(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(204);
+  });
+
   it('injeta mensagem de sistema no chat ao cancelar oferta', async () => {
-    seedDemand({ status: 'negotiating' });
-    seedOffer({ producerUid: EST_UID, status: 'accepted' });
+    seedDemand();
+    seedOffer({ producerUid: EST_UID, status: 'pending' });
 
     const req = makeRequest({ params: { offerId: OFFER_ID } });
     const res = makeResponse();
@@ -535,21 +575,6 @@ describe('cancelOffer', () => {
     expect(allMessages.some(m => m.authorRole === 'system')).toBe(true);
   });
 
-  it('não altera status da demanda ao cancelar oferta accepted', async () => {
-    seedDemand({ status: 'negotiating' });
-    seedOffer({ producerUid: EST_UID, status: 'accepted' });
-
-    const req = makeRequest({ params: { offerId: OFFER_ID } });
-    const res = makeResponse();
-
-    await cancelOffer(req, res);
-
-    expect(res.status).toHaveBeenCalledWith(204);
-    // A demanda NÃO é restaurada — apenas confirmOffer altera status da demanda
-    const demandInStore = firestoreStore.get(`establishmentDemands/${DEMAND_ID}`) as Record<string, unknown>;
-    expect(demandInStore.status).toBe('negotiating');
-  });
-
   it('retorna 403 ao tentar cancelar oferta de outro produtor', async () => {
     seedOffer({ producerUid: OTHER_UID, status: 'pending' });
 
@@ -561,8 +586,8 @@ describe('cancelOffer', () => {
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
-  it('retorna 409 ao tentar cancelar oferta já confirmada', async () => {
-    seedOffer({ producerUid: EST_UID, status: 'confirmed' });
+  it('retorna 409 ao tentar cancelar oferta já aceita', async () => {
+    seedOffer({ producerUid: EST_UID, status: 'accepted' });
 
     const req = makeRequest({ params: { offerId: OFFER_ID } });
     const res = makeResponse();
@@ -609,5 +634,136 @@ describe('getMyOffers', () => {
 
     const returned = (res.json as jest.Mock).mock.calls[0][0];
     expect(returned.offers).toEqual([]);
+  });
+});
+
+// ─── producerAcceptNegotiation ────────────────────────────────────────────────
+
+describe('producerAcceptNegotiation', () => {
+  it('aceita termos negotiating → accepted e injeta sys-msg', async () => {
+    seedDemand({ quantityNeeded: 100 });
+    seedOffer({
+      producerUid: EST_UID,
+      status: 'negotiating',
+      negotiatingPrice: 8.0,
+      negotiatingQuantity: 12,
+    });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await producerAcceptNegotiation(req, res);
+
+    expect(res.status).not.toHaveBeenCalled();
+    const returned = (res.json as jest.Mock).mock.calls[0][0];
+    expect(returned.offer.status).toBe('accepted');
+
+    const allMessages = [...firestoreStore.entries()]
+      .filter(([k]) => k.startsWith('chatMessages/'))
+      .map(([, v]) => v as Record<string, unknown>);
+    expect(allMessages.some(m => m.authorRole === 'system')).toBe(true);
+  });
+
+  it('fecha demanda quando quantityAccepted >= quantityNeeded', async () => {
+    seedDemand({ quantityNeeded: 10 });
+    seedOffer({
+      producerUid: EST_UID,
+      status: 'negotiating',
+      quantity: 10,
+      negotiatingPrice: 8.0,
+      negotiatingQuantity: 10,
+    });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await producerAcceptNegotiation(req, res);
+
+    const demandInStore = firestoreStore.get(`establishmentDemands/${DEMAND_ID}`) as Record<string, unknown>;
+    expect(demandInStore.status).toBe('closed');
+  });
+
+  it('retorna 409 quando oferta não está em negotiating', async () => {
+    seedOffer({ producerUid: EST_UID, status: 'pending' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await producerAcceptNegotiation(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+  });
+
+  it('retorna 403 quando oferta pertence a outro produtor', async () => {
+    seedOffer({ producerUid: OTHER_UID, status: 'negotiating' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await producerAcceptNegotiation(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it('retorna 404 quando oferta não existe', async () => {
+    const req = makeRequest({ params: { offerId: 'inexistente' } });
+    const res = makeResponse();
+
+    await producerAcceptNegotiation(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+});
+
+// ─── producerRejectNegotiation ────────────────────────────────────────────────
+
+describe('producerRejectNegotiation', () => {
+  it('recusa termos negotiating → rejected e injeta sys-msg', async () => {
+    seedOffer({ producerUid: EST_UID, status: 'negotiating' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await producerRejectNegotiation(req, res);
+
+    expect(res.status).not.toHaveBeenCalled();
+    const returned = (res.json as jest.Mock).mock.calls[0][0];
+    expect(returned.offer.status).toBe('rejected');
+
+    const allMessages = [...firestoreStore.entries()]
+      .filter(([k]) => k.startsWith('chatMessages/'))
+      .map(([, v]) => v as Record<string, unknown>);
+    expect(allMessages.some(m => m.authorRole === 'system')).toBe(true);
+  });
+
+  it('retorna 409 quando oferta não está em negotiating', async () => {
+    seedOffer({ producerUid: EST_UID, status: 'pending' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await producerRejectNegotiation(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+  });
+
+  it('retorna 403 quando oferta pertence a outro produtor', async () => {
+    seedOffer({ producerUid: OTHER_UID, status: 'negotiating' });
+
+    const req = makeRequest({ params: { offerId: OFFER_ID } });
+    const res = makeResponse();
+
+    await producerRejectNegotiation(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it('retorna 404 quando oferta não existe', async () => {
+    const req = makeRequest({ params: { offerId: 'inexistente' } });
+    const res = makeResponse();
+
+    await producerRejectNegotiation(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
   });
 });

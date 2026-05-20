@@ -28,10 +28,10 @@ import {
     countUnreadForOffer,
     getLastMessageForOffer,
 } from '../models/offerMessage';
-import { findOffer, listOffersByProducer, listOffersByEstablishment, listAcceptedOffersByProducer, listAcceptedOffersByEstablishment, listActiveOffersByProducer, listActiveOffersByEstablishment, listOffersWithChatByEstablishment, listOffersWithChatByProducer } from '../models/demandOffer';
+import { findOffer, listOffersWithChatByEstablishment, listOffersWithChatByProducer } from '../models/demandOffer';
 import { findDemand } from '../models/establishmentDemand';
-import { findRuralProducerProfile } from '../models/profiles/ruralProducer';
-import { findEstablishmentProfile } from '../models/profiles/establishment';
+import { findRuralProducerProfile } from '../models/profiles';
+import { findEstablishmentProfile } from '../models/profiles';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -132,7 +132,8 @@ export async function estGetMessages(req: Request, res: Response): Promise<void>
             listMessagesByOffer(offerId),
             markAllAsRead(offerId, req.user.uid),
         ]);
-        res.json({ messages });
+        const { status, pricePerUnit, quantity, negotiatingPrice, negotiatingQuantity } = access.offer;
+        res.json({ messages, offer: { status, pricePerUnit, quantity, negotiatingPrice: negotiatingPrice ?? null, negotiatingQuantity: negotiatingQuantity ?? null } });
     } catch (e) {
         console.error('[offerMessage.estGetMessages] error:', e);
         res.status(500).json({ error: 'Erro ao buscar mensagens.' });
@@ -216,21 +217,23 @@ export async function estGetChatThreads(req: Request, res: Response): Promise<vo
                     lastMessageAt:     lastMsg.createdAt,
                     unreadCount:       unread,
                     offerStatus:       offer.status,
-                    offerPricePerUnit: offer.pricePerUnit,
-                    offerQuantity:     offer.quantity,
-                    offerUnit:         (offer as any).demandUnit ?? demand?.unit ?? 'unidade',
-                };
-            })
-        );
-
-        const threads = threadResults.filter(Boolean);
-
-        // Ordena: mais recente primeiro por data da última mensagem
-        threads.sort((a, b) => b!.lastMessageAt.localeCompare(a!.lastMessageAt));
-
-        res.json({ threads });
-    } catch (e) {
-        console.error('[offerMessage.estGetChatThreads] error:', e);
+                    offerPricePerUnit:    offer.pricePerUnit,
+                     offerQuantity:        offer.quantity,
+                     offerUnit:            (offer as any).demandUnit ?? demand?.unit ?? 'unidade',
+                     negotiatingPrice:     offer.negotiatingPrice ?? null,
+                     negotiatingQuantity:  offer.negotiatingQuantity ?? null,
+                 };
+             })
+         );
+ 
+         const threads = threadResults.filter(Boolean);
+ 
+         // Ordena: mais recente primeiro por data da última mensagem
+         threads.sort((a, b) => b!.lastMessageAt.localeCompare(a!.lastMessageAt));
+ 
+         res.json({ threads });
+     } catch (e) {
+         console.error('[offerMessage.estGetChatThreads] error:', e);
         res.status(500).json({ error: 'Erro ao buscar conversas.' });
     }
 }
@@ -279,7 +282,8 @@ export async function producerGetMessages(req: Request, res: Response): Promise<
             listMessagesByOffer(offerId),
             markAllAsRead(offerId, req.user.uid),
         ]);
-        res.json({ messages });
+        const { status, pricePerUnit, quantity, negotiatingPrice, negotiatingQuantity } = access.offer;
+        res.json({ messages, offer: { status, pricePerUnit, quantity, negotiatingPrice: negotiatingPrice ?? null, negotiatingQuantity: negotiatingQuantity ?? null } });
     } catch (e) {
         console.error('[offerMessage.producerGetMessages] error:', e);
         res.status(500).json({ error: 'Erro ao buscar mensagens.' });
@@ -368,21 +372,23 @@ export async function producerGetChatThreads(req: Request, res: Response): Promi
                     lastMessageAt:     lastMsg.createdAt,
                     unreadCount:       unread,
                     offerStatus:       offer.status,
-                    offerPricePerUnit: offer.pricePerUnit,
-                    offerQuantity:     offer.quantity,
-                    offerUnit:         (offer as any).demandUnit ?? demand?.unit ?? 'unidade',
-                };
-            })
-        );
-
-        const threads = threadResults.filter(Boolean);
-
-        // Ordena: mais recente primeiro por data da última mensagem
-        threads.sort((a, b) => b!.lastMessageAt.localeCompare(a!.lastMessageAt));
-
-        res.json({ threads });
-    } catch (e) {
-        console.error('[offerMessage.producerGetChatThreads] error:', e);
+                    offerPricePerUnit:    offer.pricePerUnit,
+                     offerQuantity:        offer.quantity,
+                     offerUnit:            (offer as any).demandUnit ?? demand?.unit ?? 'unidade',
+                     negotiatingPrice:     offer.negotiatingPrice ?? null,
+                     negotiatingQuantity:  offer.negotiatingQuantity ?? null,
+                 };
+             })
+         );
+ 
+         const threads = threadResults.filter(Boolean);
+ 
+         // Ordena: mais recente primeiro por data da última mensagem
+         threads.sort((a, b) => b!.lastMessageAt.localeCompare(a!.lastMessageAt));
+ 
+         res.json({ threads });
+     } catch (e) {
+         console.error('[offerMessage.producerGetChatThreads] error:', e);
         res.status(500).json({ error: 'Erro ao buscar conversas.' });
     }
 }

@@ -1,18 +1,28 @@
 /**
  * offerController — gerencia ofertas de produtores para demandas de insumos.
  *
+ * Ciclo de vida da oferta:
+ *   pending     → produtor enviou, aguardando resposta do estabelecimento
+ *   negotiating → estabelecimento quer negociar (negotiatingPrice/Qty/Note)
+ *   accepted    → negócio fechado (estab. aceitou direto, ou produtor aceitou negociação)
+ *   rejected    → recusado por qualquer parte
+ *   cancelled   → produtor cancelou
+ *
  * Rotas do estabelecimento (autenticado, requer perfil establishment):
- *   GET    /establishment/pending-offers                → lista todas as ofertas pending/accepted
+ *   GET    /establishment/pending-offers                → lista pending + negotiating
+ *   GET    /establishment/all-offers                    → todos os status
  *   GET    /establishment/demands/:demandId/offers      → lista ofertas de uma demanda
  *   GET    /establishment/offers/:offerId               → detalhe de uma oferta
- *   POST   /establishment/offers/:offerId/accept        → aceita negociação
- *   POST   /establishment/offers/:offerId/reject        → recusa oferta
- *   POST   /establishment/offers/:offerId/confirm       → confirma (fecha negócio)
+ *   POST   /establishment/offers/:offerId/accept        → aceita diretamente (pending → accepted)
+ *   POST   /establishment/offers/:offerId/negotiate     → inicia negociação (pending/negotiating → negotiating)
+ *   POST   /establishment/offers/:offerId/reject        → recusa (pending/negotiating → rejected)
  *
  * Rotas do produtor (autenticado):
- *   POST   /marketplace/demands/:demandId/offers        → cria oferta
- *   DELETE /marketplace/offers/:offerId                 → cancela própria oferta
- *   GET    /marketplace/my-offers                       → lista próprias ofertas
+ *   POST   /marketplace/demands/:demandId/offers              → cria oferta
+ *   DELETE /marketplace/offers/:offerId                       → cancela própria oferta
+ *   GET    /marketplace/my-offers                             → lista próprias ofertas
+ *   POST   /marketplace/offers/:offerId/accept-negotiation    → aceita termos do estab. (negotiating → accepted)
+ *   POST   /marketplace/offers/:offerId/reject-negotiation    → recusa termos do estab. (negotiating → rejected)
  */
 
 import { Request, Response } from 'express';
@@ -26,11 +36,13 @@ import {
     listAllOffersByEstablishment,
     cancelOfferByProducer,
     updateOfferStatus,
+    negotiateOffer,
+    acceptNegotiation,
+    resubmitOffer,
     getDemandOfferStats,
 } from '../models/demandOffer';
 import { findDemand, updateDemandStatus } from '../models/establishmentDemand';
 import { findRuralProducerProfile } from '../models/profiles/ruralProducer';
-import { findPendingProposalForOffer } from '../models/negotiationProposal';
 import { createSystemMessage, createMessage } from '../models/offerMessage';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -44,8 +56,7 @@ async function resolveProducerName(uid: string): Promise<string> {
 
 /**
  * GET /establishment/pending-offers
- * Lista todas as ofertas pendentes (pending + accepted) de todas as demandas
- * do estabelecimento autenticado.
+ * Lista todas as ofertas pending e negotiating de todas as demandas do estabelecimento.
  */
 export async function getPendingOffers(req: Request, res: Response): Promise<void> {
     try {
@@ -60,8 +71,7 @@ export async function getPendingOffers(req: Request, res: Response): Promise<voi
 
 /**
  * GET /establishment/all-offers
- * Lista TODAS as ofertas (todos os status) de todas as demandas do estabelecimento.
- * Inclui histórico de recusadas, canceladas e confirmadas.
+ * Lista TODAS as ofertas (todos os status) do estabelecimento.
  */
 export async function getAllOffers(req: Request, res: Response): Promise<void> {
     try {
@@ -77,7 +87,7 @@ export async function getAllOffers(req: Request, res: Response): Promise<void> {
 /**
  * GET /establishment/demands/:demandId/offers
  * Lista todas as ofertas de uma demanda do estabelecimento autenticado.
- * Inclui métricas de engajamento (offerCount, quantityOffered, quantityConfirmed).
+ * Inclui métricas de engajamento (offerCount, quantityOffered, quantityAccepted).
  */
 export async function getOffersForDemand(req: Request, res: Response): Promise<void> {
     try {
@@ -93,16 +103,8 @@ export async function getOffersForDemand(req: Request, res: Response): Promise<v
             getDemandOfferStats(demandId),
         ]);
 
-        // Para ofertas em negociação, verifica se há proposta pendente
-        const acceptedOffers = offers.filter(o => o.status === 'accepted');
-        const pendingFlags = await Promise.all(
-            acceptedOffers.map(o => findPendingProposalForOffer(o.id).then(p => ({ id: o.id, hasPending: !!p }))),
-        );
-        const pendingMap = new Map(pendingFlags.map(f => [f.id, f.hasPending]));
-
         const enrichedOffers = offers.map(o => ({
             ...o,
-            hasPendingProposal: pendingMap.get(o.id) ?? false,
             demandUnit: demand.unit,
         }));
 
@@ -137,9 +139,8 @@ export async function getOfferDetail(req: Request, res: Response): Promise<void>
 
 /**
  * POST /establishment/offers/:offerId/accept
- * Establishment aceita iniciar negociação com o produtor.
- * A demanda permanece 'open' — múltiplas ofertas podem ser negociadas em paralelo.
- * O status da demanda só muda quando ofertas são confirmadas (ver confirmOffer).
+ * Estabelecimento aceita a oferta diretamente → pending/negotiating → accepted.
+ * Quantidade aceita é abatida da demanda; demanda fecha se atingir o total.
  */
 export async function acceptOffer(req: Request, res: Response): Promise<void> {
     try {
@@ -153,13 +154,28 @@ export async function acceptOffer(req: Request, res: Response): Promise<void> {
         if (!demand) { res.status(404).json({ error: 'Solicitação não encontrada.' }); return; }
         if (demand.establishmentUid !== uid) { res.status(403).json({ error: 'Acesso negado.' }); return; }
 
-        if (offer.status !== 'pending') {
-            res.status(409).json({ error: 'Apenas ofertas pendentes podem ser aceitas.' }); return;
+        if (offer.status !== 'pending' && offer.status !== 'negotiating') {
+            res.status(409).json({ error: 'Apenas ofertas pending ou negotiating podem ser aceitas.' }); return;
         }
 
         const updated = await updateOfferStatus(offerId, 'accepted');
 
-        res.json({ offer: updated });
+        // Fecha negócio: abate quantidade e verifica se demanda foi totalmente atendida
+        const stats = await getDemandOfferStats(offer.demandId);
+        const fullyFulfilled = stats.quantityAccepted >= demand.quantityNeeded;
+        if (fullyFulfilled) {
+            await updateDemandStatus(offer.demandId, 'closed');
+        } else {
+            await updateDemandStatus(offer.demandId, 'open');
+        }
+
+        await createSystemMessage(
+            offerId,
+            offer.demandId,
+            '✅ Negócio confirmado! O acordo foi fechado e a quantidade registrada como atendida.',
+        ).catch(() => {});
+
+        res.json({ offer: updated, stats });
     } catch (e) {
         console.error('[offer.acceptOffer] error:', e);
         res.status(500).json({ error: 'Erro ao aceitar oferta.' });
@@ -167,8 +183,64 @@ export async function acceptOffer(req: Request, res: Response): Promise<void> {
 }
 
 /**
+ * POST /establishment/offers/:offerId/negotiate
+ * Estabelecimento propõe novos termos (preço e/ou quantidade).
+ * Requer body: { negotiatingPrice, negotiatingQuantity, negotiatingNote? }
+ * pending/negotiating → negotiating
+ */
+export async function negotiateOfferHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const uid = req.user.uid;
+        const offerId = req.params['offerId'] as string;
+        const body = req.body as Record<string, unknown>;
+
+        const negotiatingPrice    = typeof body.negotiatingPrice    === 'number' ? body.negotiatingPrice    : NaN;
+        const negotiatingQuantity = typeof body.negotiatingQuantity === 'number' ? body.negotiatingQuantity : NaN;
+        const negotiatingNote     = typeof body.negotiatingNote     === 'string' && body.negotiatingNote.trim()
+            ? body.negotiatingNote.trim()
+            : null;
+
+        if (isNaN(negotiatingPrice) || negotiatingPrice <= 0) {
+            res.status(400).json({ error: 'negotiatingPrice deve ser maior que zero.' }); return;
+        }
+        if (isNaN(negotiatingQuantity) || negotiatingQuantity <= 0) {
+            res.status(400).json({ error: 'negotiatingQuantity deve ser maior que zero.' }); return;
+        }
+
+        const offer = await findOffer(offerId);
+        if (!offer) { res.status(404).json({ error: 'Oferta não encontrada.' }); return; }
+
+        const demand = await findDemand(offer.demandId);
+        if (!demand) { res.status(404).json({ error: 'Solicitação não encontrada.' }); return; }
+        if (demand.establishmentUid !== uid) { res.status(403).json({ error: 'Acesso negado.' }); return; }
+
+        if (offer.status !== 'pending' && offer.status !== 'negotiating') {
+            res.status(409).json({ error: 'Apenas ofertas pending ou negotiating podem entrar em negociação.' }); return;
+        }
+
+        const updated = await negotiateOffer(offerId, negotiatingPrice, negotiatingQuantity, negotiatingNote);
+
+        const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const noteText = negotiatingNote ? `\nObservação: "${negotiatingNote}"` : '';
+        await createSystemMessage(
+            offerId,
+            offer.demandId,
+            `🔄 O estabelecimento propôs novos termos:\n` +
+            `Preço: ${fmtBRL(negotiatingPrice)} / ${demand.unit}\n` +
+            `Quantidade: ${negotiatingQuantity.toLocaleString('pt-BR')} ${demand.unit}` +
+            noteText,
+        ).catch(() => {});
+
+        res.json({ offer: updated });
+    } catch (e) {
+        console.error('[offer.negotiateOfferHandler] error:', e);
+        res.status(500).json({ error: 'Erro ao propor negociação.' });
+    }
+}
+
+/**
  * POST /establishment/offers/:offerId/reject
- * Establishment recusa a oferta.
+ * Estabelecimento recusa a oferta (pending/negotiating → rejected).
  */
 export async function rejectOffer(req: Request, res: Response): Promise<void> {
     try {
@@ -182,81 +254,22 @@ export async function rejectOffer(req: Request, res: Response): Promise<void> {
         if (!demand) { res.status(404).json({ error: 'Solicitação não encontrada.' }); return; }
         if (demand.establishmentUid !== uid) { res.status(403).json({ error: 'Acesso negado.' }); return; }
 
-        if (offer.status !== 'pending' && offer.status !== 'accepted') {
+        if (offer.status !== 'pending' && offer.status !== 'negotiating') {
             res.status(409).json({ error: 'Esta oferta não pode ser recusada no status atual.' }); return;
         }
 
         const updated = await updateOfferStatus(offerId, 'rejected');
 
-        // Injeta evento de sistema no chat para que ambas as partes vejam o encerramento
         await createSystemMessage(
             offerId,
             offer.demandId,
             '❌ Esta oferta foi recusada pelo estabelecimento. O histórico desta negociação permanece disponível para consulta.',
-        ).catch(() => {/* não impede a resposta se falhar */});
+        ).catch(() => {});
 
         res.json({ offer: updated });
     } catch (e) {
         console.error('[offer.rejectOffer] error:', e);
         res.status(500).json({ error: 'Erro ao recusar oferta.' });
-    }
-}
-
-/**
- * POST /establishment/offers/:offerId/confirm
- * Negócio fechado: quantidade da oferta é abatida da demanda.
- *
- * Regras de status da demanda após confirmação:
- *   - Se quantityConfirmed >= quantityNeeded → demanda fecha ('closed')
- *     - Demandas NÃO recorrentes: permanecem fechadas.
- *     - Demandas recorrentes: TODO — reabrir automaticamente conforme periodicidade
- *       configurada pelo estabelecimento (feature futura; por ora também ficam 'closed').
- *   - Se quantityConfirmed < quantityNeeded → demanda volta para 'open'
- *     (aceita novas ofertas de outros produtores até completar o total solicitado).
- */
-export async function confirmOffer(req: Request, res: Response): Promise<void> {
-    try {
-        const uid = req.user.uid;
-        const offerId = req.params['offerId'] as string;
-
-        const offer = await findOffer(offerId);
-        if (!offer) { res.status(404).json({ error: 'Oferta não encontrada.' }); return; }
-
-        const demand = await findDemand(offer.demandId);
-        if (!demand) { res.status(404).json({ error: 'Solicitação não encontrada.' }); return; }
-        if (demand.establishmentUid !== uid) { res.status(403).json({ error: 'Acesso negado.' }); return; }
-
-        if (offer.status !== 'accepted') {
-            res.status(409).json({ error: 'Apenas ofertas aceitas podem ser confirmadas.' }); return;
-        }
-
-        const updated = await updateOfferStatus(offerId, 'confirmed');
-
-        const stats = await getDemandOfferStats(offer.demandId);
-        const fullyFulfilled = stats.quantityConfirmed >= demand.quantityNeeded;
-
-        if (fullyFulfilled) {
-            // Demanda totalmente atendida → fecha (recorrente ou não)
-            // TODO(feature): demandas recorrentes devem reabrir automaticamente conforme
-            // periodicidade configurada pelo estabelecimento. Por ora ficam 'closed' como
-            // demandas pontuais. Implementar quando o campo `recurrencePeriod` for adicionado.
-            await updateDemandStatus(offer.demandId, 'closed');
-        } else {
-            // Ainda há quantidade a atender → volta para 'open' (aceita mais ofertas)
-            await updateDemandStatus(offer.demandId, 'open');
-        }
-
-        // Injeta evento de sistema no chat
-        await createSystemMessage(
-            offerId,
-            offer.demandId,
-            '✅ Negócio confirmado! O acordo foi fechado e a quantidade registrada como atendida.',
-        ).catch(() => {});
-
-        res.json({ offer: updated, stats });
-    } catch (e) {
-        console.error('[offer.confirmOffer] error:', e);
-        res.status(500).json({ error: 'Erro ao confirmar oferta.' });
     }
 }
 
@@ -284,8 +297,7 @@ export async function submitOffer(req: Request, res: Response): Promise<void> {
             res.status(404).json({ error: 'Solicitação não encontrada ou não está aberta.' }); return;
         }
 
-        // TODO: reativar antes de ir para produção — impede que o mesmo usuário
-        // oferte para a própria solicitação (establishment e ruralProducer no mesmo uid).
+        // TODO: reativar antes de ir para produção — impede auto-oferta.
         // if (demand.establishmentUid === producerUid) {
         //     res.status(403).json({ error: 'Não é possível ofertar para a própria solicitação.' }); return;
         // }
@@ -293,9 +305,6 @@ export async function submitOffer(req: Request, res: Response): Promise<void> {
         const producerName = await resolveProducerName(producerUid);
         const offer = await createOffer(demandId, demand.establishmentUid, producerUid, producerName, input);
 
-        // ── Mensagem inaugural do chat ────────────────────────────────────────
-        // Formata o total da oferta de acordo com a unidade (g/mL = preço total,
-        // demais = pricePerUnit × quantity).
         const isByTotal = demand.unit === 'g' || demand.unit === 'mL';
         const totalValue = isByTotal
             ? input.pricePerUnit
@@ -314,7 +323,6 @@ export async function submitOffer(req: Request, res: Response): Promise<void> {
 
         await createSystemMessage(offer.id, demandId, introText).catch(() => {});
 
-        // Se o produtor incluiu mensagem opcional, publica como bolha dele no chat
         if (input.message) {
             await createMessage(
                 offer.id,
@@ -335,14 +343,13 @@ export async function submitOffer(req: Request, res: Response): Promise<void> {
 
 /**
  * DELETE /marketplace/offers/:offerId
- * Produtor cancela a própria oferta.
+ * Produtor cancela a própria oferta (pending/negotiating → cancelled).
  */
 export async function cancelOffer(req: Request, res: Response): Promise<void> {
     try {
         const producerUid = req.user.uid;
         const offerId = req.params['offerId'] as string;
 
-        // Precisamos do demandId antes de cancelar para a msg de sistema
         const offerBefore = await findOffer(offerId);
 
         await cancelOfferByProducer(offerId, producerUid);
@@ -358,9 +365,9 @@ export async function cancelOffer(req: Request, res: Response): Promise<void> {
         res.status(204).send();
     } catch (e) {
         const msg = e instanceof Error ? e.message : '';
-        if (msg === 'Offer not found.')               { res.status(404).json({ error: 'Oferta não encontrada.' }); return; }
-        if (msg === 'Forbidden.')                     { res.status(403).json({ error: 'Acesso negado.' }); return; }
-        if (msg === 'Cannot cancel a confirmed offer.') { res.status(409).json({ error: 'Não é possível cancelar uma oferta já confirmada.' }); return; }
+        if (msg === 'Offer not found.')                    { res.status(404).json({ error: 'Oferta não encontrada.' }); return; }
+        if (msg === 'Forbidden.')                          { res.status(403).json({ error: 'Acesso negado.' }); return; }
+        if (msg === 'Cannot cancel an accepted offer.')    { res.status(409).json({ error: 'Não é possível cancelar uma oferta já aceita.' }); return; }
         console.error('[offer.cancelOffer] error:', e);
         res.status(500).json({ error: 'Erro ao cancelar oferta.' });
     }
@@ -378,5 +385,117 @@ export async function getMyOffers(req: Request, res: Response): Promise<void> {
     } catch (e) {
         console.error('[offer.getMyOffers] error:', e);
         res.status(500).json({ error: 'Erro ao buscar suas ofertas.' });
+    }
+}
+
+/**
+ * POST /marketplace/offers/:offerId/accept-negotiation
+ * Produtor aceita os termos propostos pelo estabelecimento (negotiating → accepted).
+ */
+export async function producerAcceptNegotiation(req: Request, res: Response): Promise<void> {
+    try {
+        const producerUid = req.user.uid;
+        const offerId = req.params['offerId'] as string;
+
+        const offer = await findOffer(offerId);
+        if (!offer) { res.status(404).json({ error: 'Oferta não encontrada.' }); return; }
+        if (offer.producerUid !== producerUid) { res.status(403).json({ error: 'Acesso negado.' }); return; }
+
+        if (offer.status !== 'negotiating') {
+            res.status(409).json({ error: 'Apenas ofertas em negociação podem ter os termos aceitos.' }); return;
+        }
+
+        const updated = await acceptNegotiation(offerId);
+
+        // Fecha negócio: abate quantidade e verifica se demanda foi totalmente atendida
+        const demand = await findDemand(offer.demandId);
+        if (demand) {
+            const stats = await getDemandOfferStats(offer.demandId);
+            const fullyFulfilled = stats.quantityAccepted >= demand.quantityNeeded;
+            if (fullyFulfilled) {
+                await updateDemandStatus(offer.demandId, 'closed');
+            } else {
+                await updateDemandStatus(offer.demandId, 'open');
+            }
+        }
+
+        await createSystemMessage(
+            offerId,
+            offer.demandId,
+            '✅ O produtor aceitou os termos propostos! O acordo foi fechado.',
+        ).catch(() => {});
+
+        res.json({ offer: updated });
+    } catch (e) {
+        console.error('[offer.producerAcceptNegotiation] error:', e);
+        res.status(500).json({ error: 'Erro ao aceitar os termos.' });
+    }
+}
+
+/**
+ * POST /marketplace/offers/:offerId/reject-negotiation
+ * Produtor recusa os termos propostos pelo estabelecimento (negotiating → rejected).
+ */
+export async function producerRejectNegotiation(req: Request, res: Response): Promise<void> {
+    try {
+        const producerUid = req.user.uid;
+        const offerId = req.params['offerId'] as string;
+
+        const offer = await findOffer(offerId);
+        if (!offer) { res.status(404).json({ error: 'Oferta não encontrada.' }); return; }
+        if (offer.producerUid !== producerUid) { res.status(403).json({ error: 'Acesso negado.' }); return; }
+
+        if (offer.status !== 'negotiating') {
+            res.status(409).json({ error: 'Apenas ofertas em negociação podem ter os termos recusados.' }); return;
+        }
+
+        const updated = await updateOfferStatus(offerId, 'rejected');
+
+        await createSystemMessage(
+            offerId,
+            offer.demandId,
+            '❌ O produtor recusou os termos propostos. Se desejar, pode enviar uma nova oferta usando o botão "Negociar".',
+        ).catch(() => {});
+
+        res.json({ offer: updated });
+    } catch (e) {
+        console.error('[offer.producerRejectNegotiation] error:', e);
+        res.status(500).json({ error: 'Erro ao recusar os termos.' });
+    }
+}
+
+/**
+ * POST /marketplace/offers/:offerId/resubmit
+ * Produtor reenvia uma oferta rejeitada com novos termos (rejected → pending).
+ */
+export async function producerResubmitOffer(req: Request, res: Response): Promise<void> {
+    try {
+        const producerUid = req.user.uid;
+        const offerId = req.params['offerId'] as string;
+
+        const offer = await findOffer(offerId);
+        if (!offer) { res.status(404).json({ error: 'Oferta não encontrada.' }); return; }
+        if (offer.producerUid !== producerUid) { res.status(403).json({ error: 'Acesso negado.' }); return; }
+        if (offer.status !== 'rejected') {
+            res.status(409).json({ error: 'Apenas ofertas recusadas podem ser reenviadas.' }); return;
+        }
+
+        const input = buildOfferInput(req.body as Record<string, unknown>);
+        if (input.quantity <= 0 || input.pricePerUnit <= 0) {
+            res.status(400).json({ error: 'Quantidade e preço devem ser maiores que zero.' }); return;
+        }
+
+        const updated = await resubmitOffer(offerId, input);
+
+        await createSystemMessage(
+            offerId,
+            offer.demandId,
+            `🔄 O produtor enviou uma nova proposta: ${input.quantity} × R$ ${input.pricePerUnit.toFixed(2)}. Aguardando resposta do estabelecimento.`,
+        ).catch(() => {});
+
+        res.json({ offer: updated });
+    } catch (e) {
+        console.error('[offer.producerResubmitOffer] error:', e);
+        res.status(500).json({ error: 'Erro ao reenviar a oferta.' });
     }
 }
