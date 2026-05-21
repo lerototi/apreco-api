@@ -73,7 +73,7 @@ async function ensureInauguralMessage(offerId: string): Promise<void> {
         `Quantidade: ${offer.quantity.toLocaleString('pt-BR')} ${unit}\n` +
         `${priceLabel}`;
 
-    await createSystemMessage(offerId, offer.demandId, introText);
+    await createSystemMessage(offerId, offer.demandId, introText, [`${offer.producerUid}:ruralProducer`]);
 }
 
 /**
@@ -128,10 +128,9 @@ export async function estGetMessages(req: Request, res: Response): Promise<void>
             await ensureInauguralMessage(offerId).catch(() => {});
         }
 
-        const [messages] = await Promise.all([
-            listMessagesByOffer(offerId),
-            markAllAsRead(offerId, req.user.uid),
-        ]);
+        // Não marca como lido aqui — o markAllAsRead é feito explicitamente
+        // via POST /messages/read (chamado pelo frontend ao focar no chat).
+        const messages = await listMessagesByOffer(offerId);
         const { status, pricePerUnit, quantity, negotiatingPrice, negotiatingQuantity } = access.offer;
         res.json({ messages, offer: { status, pricePerUnit, quantity, negotiatingPrice: negotiatingPrice ?? null, negotiatingQuantity: negotiatingQuantity ?? null } });
     } catch (e) {
@@ -150,7 +149,7 @@ export async function estSendMessage(req: Request, res: Response): Promise<void>
         const access = await validateEstablishmentAccess(req, res, offerId);
         if (!access) return;
 
-        const CLOSED_STATUSES = ['rejected', 'confirmed', 'cancelled'];
+        const CLOSED_STATUSES = ['accepted', 'rejected', 'cancelled'];
         if (CLOSED_STATUSES.includes(access.offer.status)) {
             res.status(409).json({ error: 'Não é possível enviar mensagens para uma negociação encerrada.' });
             return;
@@ -181,7 +180,7 @@ export async function estSendMessage(req: Request, res: Response): Promise<void>
 export async function estMarkRead(req: Request, res: Response): Promise<void> {
     try {
         const { offerId } = req.params as { offerId: string };
-        await markAllAsRead(offerId, req.user.uid);
+        await markAllAsRead(offerId, req.user.uid, 'establishment');
         res.status(204).send();
     } catch (e) {
         console.error('[offerMessage.estMarkRead] error:', e);
@@ -205,7 +204,7 @@ export async function estGetChatThreads(req: Request, res: Response): Promise<vo
                 if (!lastMsg) return null;
 
                 const demand = await findDemand(offer.demandId);
-                const unread = await countUnreadForOffer(offer.id, uid);
+                const unread = await countUnreadForOffer(offer.id, uid, 'establishment');
 
                 return {
                     offerId:           offer.id,
@@ -249,7 +248,7 @@ export async function estUnreadCount(req: Request, res: Response): Promise<void>
         let total = 0;
         await Promise.all(
             allOffers.map(async (offer) => {
-                const count = await countUnreadForOffer(offer.id, uid);
+                const count = await countUnreadForOffer(offer.id, uid, 'establishment');
                 total += count;
             })
         );
@@ -278,10 +277,9 @@ export async function producerGetMessages(req: Request, res: Response): Promise<
             await ensureInauguralMessage(offerId).catch(() => {});
         }
 
-        const [messages] = await Promise.all([
-            listMessagesByOffer(offerId),
-            markAllAsRead(offerId, req.user.uid),
-        ]);
+        // Não marca como lido aqui — o markAllAsRead é feito explicitamente
+        // via POST /messages/read (chamado pelo frontend ao focar no chat).
+        const messages = await listMessagesByOffer(offerId);
         const { status, pricePerUnit, quantity, negotiatingPrice, negotiatingQuantity } = access.offer;
         res.json({ messages, offer: { status, pricePerUnit, quantity, negotiatingPrice: negotiatingPrice ?? null, negotiatingQuantity: negotiatingQuantity ?? null } });
     } catch (e) {
@@ -300,7 +298,7 @@ export async function producerSendMessage(req: Request, res: Response): Promise<
         const access = await validateProducerAccess(req, res, offerId);
         if (!access) return;
 
-        const CLOSED_STATUSES = ['rejected', 'confirmed', 'cancelled'];
+        const CLOSED_STATUSES = ['accepted', 'rejected', 'cancelled'];
         if (CLOSED_STATUSES.includes(access.offer.status)) {
             res.status(409).json({ error: 'Não é possível enviar mensagens para uma negociação encerrada.' });
             return;
@@ -331,7 +329,7 @@ export async function producerSendMessage(req: Request, res: Response): Promise<
 export async function producerMarkRead(req: Request, res: Response): Promise<void> {
     try {
         const { offerId } = req.params as { offerId: string };
-        await markAllAsRead(offerId, req.user.uid);
+        await markAllAsRead(offerId, req.user.uid, 'ruralProducer');
         res.status(204).send();
     } catch (e) {
         console.error('[offerMessage.producerMarkRead] error:', e);
@@ -355,7 +353,7 @@ export async function producerGetChatThreads(req: Request, res: Response): Promi
                 if (!lastMsg) return null;
 
                 const demand = await findDemand(offer.demandId);
-                const unread = await countUnreadForOffer(offer.id, uid);
+                const unread = await countUnreadForOffer(offer.id, uid, 'ruralProducer');
 
                 const estProfile = await findEstablishmentProfile(offer.establishmentUid);
                 const estName = estProfile?.businessName?.trim()
@@ -404,7 +402,7 @@ export async function producerUnreadCount(req: Request, res: Response): Promise<
         let total = 0;
         await Promise.all(
             allOffers.map(async (offer) => {
-                const count = await countUnreadForOffer(offer.id, uid);
+                const count = await countUnreadForOffer(offer.id, uid, 'ruralProducer');
                 total += count;
             })
         );

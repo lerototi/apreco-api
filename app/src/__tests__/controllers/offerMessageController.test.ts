@@ -60,14 +60,14 @@ function seedOffer(overrides = {}) {
         demandId: DEMAND_ID,
         establishmentUid: EST_UID,
         producerUid: PRODUCER_UID,
-        status: 'accepted',
+        status: 'pending',
         ...overrides,
     });
     firestoreStore.set(`ruralProducerOffers/${OFFER_ID}`, o);
     return o;
 }
 
-function seedMessage(id: string, text: string, senderUid: string, authorRole: string, read = false) {
+function seedMessage(id: string, text: string, senderUid: string, authorRole: string, readBy: string[] = []) {
     firestoreStore.set(`chatMessages/${id}`, makeChatMessage({
         id,
         offerId: OFFER_ID,
@@ -75,7 +75,7 @@ function seedMessage(id: string, text: string, senderUid: string, authorRole: st
         senderUid,
         authorRole: authorRole as any,
         text,
-        read,
+        readBy,
     }));
 }
 
@@ -97,7 +97,7 @@ describe('estGetMessages', () => {
     it('200 — retorna lista de mensagens', async () => {
         seedDemand();
         seedOffer();
-        seedMessage('msg-001', 'Olá!', PRODUCER_UID, 'ruralProducer', false);
+        seedMessage('msg-001', 'Olá!', PRODUCER_UID, 'ruralProducer', []);
 
         const req = makeRequest({ user: { uid: EST_UID }, params: { offerId: OFFER_ID } });
         const res = makeResponse();
@@ -174,7 +174,7 @@ describe('estSendMessage', () => {
         expect(res.status).toHaveBeenCalledWith(400);
     });
 
-    it.each(['rejected', 'confirmed', 'cancelled'])(
+    it.each(['accepted', 'rejected', 'cancelled'])(
         '409 — estabelecimento não pode enviar msg para oferta %s',
         async (closedStatus) => {
             seedDemand();
@@ -197,7 +197,7 @@ describe('estMarkRead', () => {
     it('204 — marca mensagens como lidas', async () => {
         seedDemand();
         seedOffer();
-        seedMessage('msg-001', 'Oi', PRODUCER_UID, 'ruralProducer', false);
+        seedMessage('msg-001', 'Oi', PRODUCER_UID, 'ruralProducer', []);
         const req = makeRequest({ user: { uid: EST_UID }, params: { offerId: OFFER_ID } });
         const res = makeResponse();
         await estMarkRead(req as any, res as any);
@@ -212,7 +212,7 @@ describe('estGetChatThreads', () => {
     it('retorna lista de threads com lastMessage e unreadCount', async () => {
         seedDemand();
         seedOffer();
-        seedMessage('msg-001', 'Posso entregar sexta', PRODUCER_UID, 'ruralProducer', false);
+        seedMessage('msg-001', 'Posso entregar sexta', PRODUCER_UID, 'ruralProducer', []);
 
         const req = makeRequest({ user: { uid: EST_UID }, params: {} });
         const res = makeResponse();
@@ -251,8 +251,8 @@ describe('estUnreadCount', () => {
     it('conta mensagens não lidas pelo estabelecimento', async () => {
         seedDemand();
         seedOffer();
-        seedMessage('msg-001', 'Oi', PRODUCER_UID, 'ruralProducer', false); // não lida pelo EST
-        seedMessage('msg-002', 'Ok', EST_UID, 'establishment', false);       // própria — não conta (senderUid == uid)
+        seedMessage('msg-001', 'Oi', PRODUCER_UID, 'ruralProducer', []);                            // não lida pelo EST
+        seedMessage('msg-002', 'Ok', EST_UID, 'establishment', [`${EST_UID}:establishment`]);        // própria — não conta (senderUid == uid && role == role)
         const req = makeRequest({ user: { uid: EST_UID }, params: {} });
         const res = makeResponse();
         await estUnreadCount(req as any, res as any);
@@ -267,7 +267,7 @@ describe('producerGetMessages', () => {
     it('200 — produtor lê mensagens da própria oferta', async () => {
         seedDemand();
         seedOffer();
-        seedMessage('msg-001', 'Olá produtor', EST_UID, 'establishment', false);
+        seedMessage('msg-001', 'Olá produtor', EST_UID, 'establishment', []);
 
         const req = makeRequest({ user: { uid: PRODUCER_UID }, params: { offerId: OFFER_ID } });
         const res = makeResponse();
@@ -319,7 +319,7 @@ describe('producerSendMessage', () => {
         expect(res.status).toHaveBeenCalledWith(400);
     });
 
-    it.each(['rejected', 'confirmed', 'cancelled'])(
+    it.each(['accepted', 'rejected', 'cancelled'])(
         '409 — produtor não pode enviar msg para oferta %s',
         async (closedStatus) => {
             seedDemand();
@@ -356,7 +356,7 @@ describe('producerGetChatThreads', () => {
         seedDemand();
         seedOffer();
         // Threads só aparecem quando há pelo menos uma mensagem no chat
-        seedMessage('msg-thread-001', 'Olá, tenho interesse!', PRODUCER_UID, 'ruralProducer', true);
+        seedMessage('msg-thread-001', 'Olá, tenho interesse!', PRODUCER_UID, 'ruralProducer', [`${PRODUCER_UID}:ruralProducer`]);
 
         const req = makeRequest({ user: { uid: PRODUCER_UID }, params: {} });
         const res = makeResponse();
@@ -384,7 +384,7 @@ describe('producerUnreadCount', () => {
     it('conta mensagens não lidas pelo produtor', async () => {
         seedDemand();
         seedOffer();
-        seedMessage('msg-001', 'Confirma?', EST_UID, 'establishment', false); // não lida pelo produtor
+        seedMessage('msg-001', 'Confirma?', EST_UID, 'establishment', []); // não lida pelo produtor
         const req = makeRequest({ user: { uid: PRODUCER_UID }, params: {} });
         const res = makeResponse();
         await producerUnreadCount(req as any, res as any);

@@ -9,13 +9,17 @@
  *   - offerId   → chat entre estabelecimento e produtor (sobre uma oferta)
  *   - productId → futuro: chat entre consumidor e produtor (sobre um produto)
  *
- * Acesso:
- *   - Carregar chat por oferta: where('offerId', '==', offerId)
- *   - Não lidas: where('offerId', '==', oid).where('senderUid', '!=', meuUid).where('read', '==', false)
- *   - Lista de threads: where('offerId', 'in', [lista de offerIds])
+ * Leitura por destinatário:
+ *   - `readBy: string[]` — chaves compostas `uid:role` de quem já leu esta mensagem.
+ *     Ex: `["uid123:establishment", "uid456:ruralProducer"]`
+ *   - Chaves compostas permitem que o mesmo Firebase UID atue como estabelecimento
+ *     e produtor simultaneamente (útil em testes e contas multi-perfil).
+ *   - Uma mensagem é não lida para `uid+role` se `"uid:role"` NÃO está em `readBy`.
+ *   - Ao enviar, o remetente é incluído em `readBy` com sua role.
+ *   - `markAllAsRead(offerId, uid, role)` faz arrayUnion(`uid:role`) nas não lidas.
  */
 
-import { db } from '../config/firebase';
+import { db, admin } from '../config/firebase';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -41,8 +45,12 @@ export interface ChatMessage {
 
     text: string;
 
-    /** false = não lida pelo destinatário; true = já leu */
-    read: boolean;
+    /**
+     * Chaves compostas `uid:role` de quem já leu esta mensagem.
+     * Ex: `["uid123:establishment", "uid456:ruralProducer"]`
+     * Uma mensagem é não lida para `uid+role` se `"uid:role"` NÃO está neste array.
+     */
+    readBy: string[];
 
     createdAt: string;
 }
@@ -76,21 +84,26 @@ export async function listMessagesByOffer(offerId: string): Promise<ChatMessage[
 }
 
 /**
- * Conta mensagens não lidas para um UID em uma oferta específica.
- * "Não lida" = remetente não é o UID e read == false.
+ * Conta mensagens não lidas para um uid+role em uma oferta específica.
+ * "Não lida" = `uid:role` NÃO está no array readBy da mensagem.
+ * Mensagens enviadas pelo próprio uid com a mesma role nunca contam.
  */
 export async function countUnreadForOffer(
     offerId: string,
     uid: string,
+    role: 'establishment' | 'ruralProducer',
 ): Promise<number> {
+    const key = `${uid}:${role}`;
     const snap = await messagesCol()
         .where('offerId', '==', offerId)
-        .where('read', '==', false)
         .get();
-    // Filtra apenas as mensagens enviadas por outra pessoa
     let count = 0;
     for (const doc of snap.docs) {
-        if (doc.data().senderUid !== uid) count++;
+        const data = doc.data();
+        // Não conta mensagens enviadas pelo próprio uid com a mesma role
+        if (data.senderUid === uid && data.authorRole === role) continue;
+        const readBy: string[] = data.readBy ?? [];
+        if (!readBy.includes(key)) count++;
     }
     return count;
 }
@@ -110,18 +123,19 @@ export async function getLastMessageForOffer(
     return { id: snap.docs[0].id, ...snap.docs[0].data() } as ChatMessage;
 }
 
-// ─── Mutations ────────────────────────────────────────────────────────────────
-
 /**
- * Cria uma mensagem de sistema (evento de status) sem remetente humano.
- * authorRole = 'system'; senderUid = 'system'; read = true (não gera notificação).
+ * Cria uma mensagem de sistema (evento de status).
+ * authorRole = 'system'; senderUid = 'system'.
+ * `initialReadBy` deve conter o UID de quem disparou a ação — assim apenas
+ * a outra parte recebe notificação (badge). Quem agiu já "sabe" o que aconteceu.
  */
 export async function createSystemMessage(
     offerId: string,
     demandId: string | null,
     text: string,
+    initialReadBy: string[] = [],
 ): Promise<ChatMessage> {
-    return createMessage(offerId, demandId, 'system', 'Sistema', 'system', text, true);
+    return createMessage(offerId, demandId, 'system', 'Sistema', 'system', text, initialReadBy);
 }
 
 export async function createMessage(
@@ -131,10 +145,14 @@ export async function createMessage(
     senderName: string,
     authorRole: MessageAuthorRole,
     text: string,
-    alreadyRead = false,
+    initialReadBy: string[] = [],
 ): Promise<ChatMessage> {
     const now = new Date().toISOString();
     const ref = messagesCol().doc();
+    // O remetente sempre está em readBy com sua role (ele não precisa de notificação própria).
+    // Para 'system', nenhuma chave automática — o chamador controla via initialReadBy.
+    const readBySet = new Set<string>(initialReadBy);
+    if (senderUid !== 'system') readBySet.add(`${senderUid}:${authorRole}`);
     const msg: ChatMessage = {
         id:         ref.id,
         senderUid,
@@ -144,7 +162,7 @@ export async function createMessage(
         demandId,
         productId:  null,
         text:       text.trim(),
-        read:       alreadyRead,
+        readBy:     Array.from(readBySet),
         createdAt:  now,
     };
     await ref.set(msg);
@@ -152,24 +170,32 @@ export async function createMessage(
 }
 
 /**
- * Marca todas as mensagens de uma oferta como lidas para um UID.
- * Só atualiza mensagens enviadas por outra pessoa (não as próprias).
+ * Marca todas as mensagens de uma oferta como lidas para uid+role.
+ * Usa arrayUnion para adicionar `uid:role` a readBy sem sobrescrever leituras de outros.
+ * Só atualiza mensagens onde `uid:role` ainda não está em readBy.
  */
 export async function markAllAsRead(
     offerId: string,
     uid: string,
+    role: 'establishment' | 'ruralProducer',
 ): Promise<void> {
+    const key = `${uid}:${role}`;
     const snap = await messagesCol()
         .where('offerId', '==', offerId)
-        .where('read', '==', false)
         .get();
     if (snap.empty) return;
 
     const updates: Promise<void>[] = [];
     for (const doc of snap.docs) {
-        if (doc.data().senderUid !== uid) {
+        const data = doc.data();
+        // Pula mensagens enviadas pelo próprio uid com a mesma role
+        if (data.senderUid === uid && data.authorRole === role) continue;
+        const readBy: string[] = data.readBy ?? [];
+        if (!readBy.includes(key)) {
             updates.push(
-                messagesCol().doc(doc.id).update({ read: true }).then(() => {}),
+                messagesCol().doc(doc.id).update({
+                    readBy: admin.firestore.FieldValue.arrayUnion(key),
+                }).then(() => {}),
             );
         }
     }
