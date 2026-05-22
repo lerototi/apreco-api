@@ -73,7 +73,11 @@ async function ensureInauguralMessage(offerId: string): Promise<void> {
         `Quantidade: ${offer.quantity.toLocaleString('pt-BR')} ${unit}\n` +
         `${priceLabel}`;
 
-    await createSystemMessage(offerId, offer.demandId, introText, [`${offer.producerUid}:ruralProducer`]);
+    await createSystemMessage(offerId, offer.demandId, introText,
+        [`${offer.producerUid}:ruralProducer`],
+        [offer.producerUid, offer.establishmentUid],
+        [{ uid: offer.establishmentUid, role: 'establishment' }],
+    );
 }
 
 /**
@@ -166,6 +170,9 @@ export async function estSendMessage(req: Request, res: Response): Promise<void>
             senderName,
             'establishment',
             text,
+            [],
+            [access.offer.producerUid, req.user.uid],
+            [{ uid: access.offer.producerUid, role: 'ruralProducer' }],
         );
         res.status(201).json({ message });
     } catch (e) {
@@ -180,7 +187,11 @@ export async function estSendMessage(req: Request, res: Response): Promise<void>
 export async function estMarkRead(req: Request, res: Response): Promise<void> {
     try {
         const { offerId } = req.params as { offerId: string };
-        await markAllAsRead(offerId, req.user.uid, 'establishment');
+        const uid = req.user.uid;
+        // Busca todos os offers do estabelecimento para recalcular o contador global
+        const allOffers = await listOffersWithChatByEstablishment(uid);
+        const allOfferIds = allOffers.map(o => o.id);
+        await markAllAsRead(offerId, uid, 'establishment', allOfferIds);
         res.status(204).send();
     } catch (e) {
         console.error('[offerMessage.estMarkRead] error:', e);
@@ -315,6 +326,9 @@ export async function producerSendMessage(req: Request, res: Response): Promise<
             senderName,
             'ruralProducer',
             text,
+            [],
+            [req.user.uid, access.offer.establishmentUid],
+            [{ uid: access.offer.establishmentUid, role: 'establishment' }],
         );
         res.status(201).json({ message });
     } catch (e) {
@@ -329,7 +343,11 @@ export async function producerSendMessage(req: Request, res: Response): Promise<
 export async function producerMarkRead(req: Request, res: Response): Promise<void> {
     try {
         const { offerId } = req.params as { offerId: string };
-        await markAllAsRead(offerId, req.user.uid, 'ruralProducer');
+        const uid = req.user.uid;
+        // Busca todos os offers do produtor para recalcular o contador global
+        const allOffers = await listOffersWithChatByProducer(uid);
+        const allOfferIds = allOffers.map(o => o.id);
+        await markAllAsRead(offerId, uid, 'ruralProducer', allOfferIds);
         res.status(204).send();
     } catch (e) {
         console.error('[offerMessage.producerMarkRead] error:', e);

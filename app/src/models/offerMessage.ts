@@ -23,6 +23,22 @@ import { db, admin } from '../config/firebase';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
+/**
+ * Contador desnormalizado de mensagens não lidas por uid:role.
+ * Coleção raiz: unreadCounters/{uid}:{role}
+ * Ex: documento "uid123:establishment" → { total: 3, updatedAt: "..." }
+ *
+ * Mantido sincronizado pelo backend (Admin SDK) — nunca escrito pelo cliente.
+ * O cliente abre onSnapshot neste documento para receber o badge em real-time
+ * sem precisar de polling.
+ */
+export interface UnreadCounter {
+    uid: string;
+    role: 'establishment' | 'ruralProducer';
+    total: number;
+    updatedAt: string;
+}
+
 export type MessageAuthorRole = 'establishment' | 'ruralProducer' | 'consumer' | 'system';
 
 export interface ChatMessage {
@@ -52,6 +68,13 @@ export interface ChatMessage {
      */
     readBy: string[];
 
+    /**
+     * UIDs dos dois participantes da conversa: [producerUid, establishmentUid].
+     * Desnormalizado para permitir Security Rules no cliente Firestore sem joins.
+     * Necessário para o onSnapshot do chat funcionar com as rules corretas.
+     */
+    participantUids: string[];
+
     createdAt: string;
 }
 
@@ -71,6 +94,56 @@ export interface ChatThread {
 
 function messagesCol() {
     return db.collection('chatMessages');
+}
+
+function unreadCountersCol() {
+    return db.collection('unreadCounters');
+}
+
+// ─── unreadCounters helpers ───────────────────────────────────────────────────
+
+/**
+ * Incrementa o contador global de não lidas para uid+role em +delta.
+ * Usado ao criar mensagem — cada destinatário recebe +1.
+ */
+export async function incrementUnreadCounter(
+    uid: string,
+    role: 'establishment' | 'ruralProducer',
+    delta = 1,
+): Promise<void> {
+    const docId = `${uid}:${role}`;
+    await unreadCountersCol().doc(docId).set({
+        uid,
+        role,
+        total: admin.firestore.FieldValue.increment(delta),
+        updatedAt: new Date().toISOString(),
+    }, { merge: true });
+}
+
+/**
+ * Recalcula e persiste o total de não lidas para uid+role somando todas as offers.
+ * Chamado após markAllAsRead para garantir consistência.
+ * Recebe a lista de offerId do usuário para evitar query extra.
+ */
+export async function recalcTotalUnreadCounter(
+    uid: string,
+    role: 'establishment' | 'ruralProducer',
+    offerIds: string[],
+): Promise<void> {
+    let total = 0;
+    await Promise.all(
+        offerIds.map(async (offerId) => {
+            const count = await countUnreadForOffer(offerId, uid, role);
+            total += count;
+        }),
+    );
+    const docId = `${uid}:${role}`;
+    await unreadCountersCol().doc(docId).set({
+        uid,
+        role,
+        total,
+        updatedAt: new Date().toISOString(),
+    }, { merge: true });
 }
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -126,16 +199,19 @@ export async function getLastMessageForOffer(
 /**
  * Cria uma mensagem de sistema (evento de status).
  * authorRole = 'system'; senderUid = 'system'.
- * `initialReadBy` deve conter o UID de quem disparou a ação — assim apenas
- * a outra parte recebe notificação (badge). Quem agiu já "sabe" o que aconteceu.
+ * `initialReadBy` deve conter as chaves uid:role de quem disparou a ação.
+ * `participantUids` deve ter [producerUid, establishmentUid] — necessário para Security Rules.
+ * `unreadRecipients` lista os uid+role que devem ter o contador incrementado.
  */
 export async function createSystemMessage(
     offerId: string,
     demandId: string | null,
     text: string,
     initialReadBy: string[] = [],
+    participantUids: string[] = [],
+    unreadRecipients: Array<{ uid: string; role: 'establishment' | 'ruralProducer' }> = [],
 ): Promise<ChatMessage> {
-    return createMessage(offerId, demandId, 'system', 'Sistema', 'system', text, initialReadBy);
+    return createMessage(offerId, demandId, 'system', 'Sistema', 'system', text, initialReadBy, participantUids, unreadRecipients);
 }
 
 export async function createMessage(
@@ -146,6 +222,8 @@ export async function createMessage(
     authorRole: MessageAuthorRole,
     text: string,
     initialReadBy: string[] = [],
+    participantUids: string[] = [],
+    unreadRecipients: Array<{ uid: string; role: 'establishment' | 'ruralProducer' }> = [],
 ): Promise<ChatMessage> {
     const now = new Date().toISOString();
     const ref = messagesCol().doc();
@@ -153,19 +231,29 @@ export async function createMessage(
     // Para 'system', nenhuma chave automática — o chamador controla via initialReadBy.
     const readBySet = new Set<string>(initialReadBy);
     if (senderUid !== 'system') readBySet.add(`${senderUid}:${authorRole}`);
+
     const msg: ChatMessage = {
-        id:         ref.id,
+        id:             ref.id,
         senderUid,
         authorRole,
         senderName,
         offerId,
         demandId,
-        productId:  null,
-        text:       text.trim(),
-        readBy:     Array.from(readBySet),
-        createdAt:  now,
+        productId:      null,
+        text:           text.trim(),
+        readBy:         Array.from(readBySet),
+        participantUids,
+        createdAt:      now,
     };
     await ref.set(msg);
+
+    // Incrementa o contador de não lidas para cada destinatário explícito.
+    if (unreadRecipients.length > 0) {
+        await Promise.all(
+            unreadRecipients.map(({ uid, role }) => incrementUnreadCounter(uid, role)),
+        );
+    }
+
     return msg;
 }
 
@@ -173,17 +261,22 @@ export async function createMessage(
  * Marca todas as mensagens de uma oferta como lidas para uid+role.
  * Usa arrayUnion para adicionar `uid:role` a readBy sem sobrescrever leituras de outros.
  * Só atualiza mensagens onde `uid:role` ainda não está em readBy.
+ * Se `allOfferIds` for fornecido, recalcula o contador global de não lidas após marcar.
  */
 export async function markAllAsRead(
     offerId: string,
     uid: string,
     role: 'establishment' | 'ruralProducer',
+    allOfferIds?: string[],
 ): Promise<void> {
     const key = `${uid}:${role}`;
     const snap = await messagesCol()
         .where('offerId', '==', offerId)
         .get();
-    if (snap.empty) return;
+    if (snap.empty) {
+        if (allOfferIds) await recalcTotalUnreadCounter(uid, role, allOfferIds);
+        return;
+    }
 
     const updates: Promise<void>[] = [];
     for (const doc of snap.docs) {
@@ -200,4 +293,9 @@ export async function markAllAsRead(
         }
     }
     await Promise.all(updates);
+
+    // Recalcula o contador global após marcar (garante consistência)
+    if (allOfferIds) {
+        await recalcTotalUnreadCounter(uid, role, allOfferIds);
+    }
 }

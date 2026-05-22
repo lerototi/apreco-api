@@ -174,6 +174,8 @@ export async function acceptOffer(req: Request, res: Response): Promise<void> {
             offer.demandId,
             '✅ Negócio confirmado! O acordo foi fechado e a quantidade registrada como atendida.',
             [`${uid}:establishment`],
+            [offer.producerUid, uid],
+            [{ uid: offer.producerUid, role: 'ruralProducer' }],
         ).catch(() => {});
 
         res.json({ offer: updated, stats });
@@ -231,6 +233,8 @@ export async function negotiateOfferHandler(req: Request, res: Response): Promis
             `Quantidade: ${negotiatingQuantity.toLocaleString('pt-BR')} ${demand.unit}` +
             noteText,
             [`${uid}:establishment`],
+            [offer.producerUid, uid],
+            [{ uid: offer.producerUid, role: 'ruralProducer' }],
         ).catch(() => {});
 
         res.json({ offer: updated });
@@ -267,6 +271,8 @@ export async function rejectOffer(req: Request, res: Response): Promise<void> {
             offer.demandId,
             '❌ Esta oferta foi recusada pelo estabelecimento. O histórico desta negociação permanece disponível para consulta.',
             [`${uid}:establishment`],
+            [offer.producerUid, uid],
+            [{ uid: offer.producerUid, role: 'ruralProducer' }],
         ).catch(() => {});
 
         res.json({ offer: updated });
@@ -324,7 +330,11 @@ export async function submitOffer(req: Request, res: Response): Promise<void> {
             `Quantidade: ${input.quantity.toLocaleString('pt-BR')} ${demand.unit}\n` +
             `${priceLabel}`;
 
-        await createSystemMessage(offer.id, demandId, introText, [`${producerUid}:ruralProducer`]).catch(() => {});
+        await createSystemMessage(offer.id, demandId, introText,
+            [`${producerUid}:ruralProducer`],
+            [producerUid, demand.establishmentUid],
+            [{ uid: demand.establishmentUid, role: 'establishment' }],
+        ).catch(() => {});
 
         if (input.message) {
             await createMessage(
@@ -363,6 +373,8 @@ export async function cancelOffer(req: Request, res: Response): Promise<void> {
                 offerBefore.demandId,
                 '🚫 O produtor cancelou esta oferta. O histórico desta negociação permanece disponível para consulta.',
                 [`${producerUid}:ruralProducer`],
+                [producerUid, offerBefore.establishmentUid],
+                [{ uid: offerBefore.establishmentUid, role: 'establishment' }],
             ).catch(() => {});
         }
 
@@ -428,6 +440,8 @@ export async function producerAcceptNegotiation(req: Request, res: Response): Pr
             offer.demandId,
             '✅ O produtor aceitou os termos propostos! O acordo foi fechado.',
             [`${producerUid}:ruralProducer`],
+            [producerUid, offer.establishmentUid],
+            [{ uid: offer.establishmentUid, role: 'establishment' }],
         ).catch(() => {});
 
         res.json({ offer: updated });
@@ -461,6 +475,8 @@ export async function producerRejectNegotiation(req: Request, res: Response): Pr
             offer.demandId,
             '❌ O produtor recusou os termos propostos. Se desejar, pode enviar uma nova oferta usando o botão "Negociar".',
             [`${producerUid}:ruralProducer`],
+            [producerUid, offer.establishmentUid],
+            [{ uid: offer.establishmentUid, role: 'establishment' }],
         ).catch(() => {});
 
         res.json({ offer: updated });
@@ -498,6 +514,8 @@ export async function producerResubmitOffer(req: Request, res: Response): Promis
             offer.demandId,
             `🔄 O produtor enviou uma nova proposta: ${input.quantity} × R$ ${input.pricePerUnit.toFixed(2)}. Aguardando resposta do estabelecimento.`,
             [`${producerUid}:ruralProducer`],
+            [producerUid, offer.establishmentUid],
+            [{ uid: offer.establishmentUid, role: 'establishment' }],
         ).catch(() => {});
 
         res.json({ offer: updated });

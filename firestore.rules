@@ -53,5 +53,30 @@ service cloud.firestore {
       // Deletion only via Admin SDK
       allow delete: if false;
     }
+
+    // ─── Chat Messages ─────────────────────────────────────────────────
+    // Apenas leitura — escrita é exclusiva do Admin SDK (Cloud Functions).
+    // O cliente abre onSnapshot para receber mensagens em real-time sem polling.
+    match /chatMessages/{messageId} {
+      // Permite leitura se o usuário autenticado está em participantUids
+      allow read: if request.auth != null
+        && request.auth.uid in resource.data.participantUids;
+
+      // Nunca permite escrita via cliente — apenas Admin SDK
+      allow write: if false;
+    }
+
+    // ─── Unread Counters ───────────────────────────────────────────────
+    // Documento desnormalizado: {uid}:{role} → { total, uid, role, updatedAt }
+    // O cliente abre onSnapshot para receber o badge em real-time.
+    match /unreadCounters/{counterId} {
+      // Permite leitura apenas pelo uid dono do contador
+      // O docId tem formato "uid:role", e o documento tem campo uid
+      allow read: if request.auth != null
+        && request.auth.uid == resource.data.uid;
+
+      // Nunca permite escrita via cliente — apenas Admin SDK
+      allow write: if false;
+    }
   }
 }

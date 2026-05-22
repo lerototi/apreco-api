@@ -271,6 +271,7 @@ export function makeChatMessage(overrides: Partial<ChatMessage> = {}): ChatMessa
     productId: null,
     text: 'Mensagem de teste',
     readBy: [],
+    participantUids: [],
     createdAt: '2024-01-01T00:00:00.000Z',
     ...overrides,
   };

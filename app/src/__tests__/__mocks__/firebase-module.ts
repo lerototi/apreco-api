@@ -32,12 +32,13 @@ export const firestoreStore: Map<string, any> = new Map();
 const serverTimestamp = () => new Date('2024-01-01T00:00:00.000Z');
 const arrayUnion = (...items: unknown[]) => ({ __arrayUnion: items });
 const arrayRemove = (...items: unknown[]) => ({ __arrayRemove: items });
+const increment = (n: number) => ({ __increment: n });
 
 // ─── Mock do admin ────────────────────────────────────────────────────────────
 
 export const admin = {
   firestore: {
-    FieldValue: { serverTimestamp, arrayUnion, arrayRemove },
+    FieldValue: { serverTimestamp, arrayUnion, arrayRemove, increment },
   },
 };
 
@@ -61,6 +62,12 @@ function applyArrayMarkers(
         const items = (value as { __arrayRemove: unknown[] }).__arrayRemove;
         const current = Array.isArray(merged[key]) ? (merged[key] as unknown[]) : [];
         merged[key] = current.filter((x) => !items.includes(x));
+        continue;
+      }
+      if ('__increment' in (value as object)) {
+        const n = (value as { __increment: number }).__increment;
+        const current = typeof merged[key] === 'number' ? (merged[key] as number) : 0;
+        merged[key] = current + n;
         continue;
       }
     }

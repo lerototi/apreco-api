@@ -53,6 +53,9 @@ export const mockAdmin = {
   firestore: {
     FieldValue: {
       serverTimestamp: jest.fn(() => new Date('2024-01-01T00:00:00.000Z')),
+      arrayUnion: jest.fn((...args: unknown[]) => ({ _type: 'arrayUnion', args })),
+      arrayRemove: jest.fn((...args: unknown[]) => ({ _type: 'arrayRemove', args })),
+      increment: jest.fn((n: number) => ({ _type: 'increment', n })),
     },
   },
   apps: [true],
