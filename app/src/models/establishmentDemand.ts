@@ -13,13 +13,14 @@
  *   negotiating → oferta aceita, combinando entrega (futuro)
  *   closed      → negócio encerrado
  *   cancelled   → cancelada pelo estabelecimento
+ *   expired     → prazo expirou sem oferta aceita (transição automática)
  */
 
 import { db } from '../config/firebase';
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-export type DemandStatus = 'open' | 'negotiating' | 'closed' | 'cancelled';
+export type DemandStatus = 'open' | 'negotiating' | 'closed' | 'cancelled' | 'expired';
 
 export type DemandCategory =
     | 'hortalicas'
@@ -89,7 +90,7 @@ const VALID_UNITS: DemandUnit[] = ['kg', 'g', 'ton', 'L', 'mL', 'unidade', 'caix
 
 export { VALID_CATEGORIES, VALID_UNITS };
 
-const VALID_STATUSES: DemandStatus[] = ['open', 'negotiating', 'closed', 'cancelled'];
+const VALID_STATUSES: DemandStatus[] = ['open', 'negotiating', 'closed', 'cancelled', 'expired'];
 
 export function buildDemandInput(p: RawInput): EstablishmentDemandInput {
     const category: DemandCategory =
@@ -147,9 +148,9 @@ export async function listDemandsByEstablishment(
 
 export async function listOpenDemands(): Promise<EstablishmentDemand[]> {
     // Demandas visíveis no marketplace: 'open' e 'negotiating'
-    // (negociação em andamento não bloqueia novos produtores de ofertar)
-    // Recorrentes não têm deadline — buscadas separadamente e mescladas no topo
-    const VISIBLE = ['open', 'negotiating'] as const;
+    // Recorrentes não têm deadline — buscadas separadamente e mescladas no topo.
+    // Pontuais com deadline passado são excluídas (já foram/serão expiradas).
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
     const [recurringOpen, recurringNeg, pontualOpen, pontualNeg] = await Promise.all([
         demandsCol()
@@ -165,16 +166,16 @@ export async function listOpenDemands(): Promise<EstablishmentDemand[]> {
         demandsCol()
             .where('status', '==', 'open')
             .where('isRecurring', '==', false)
+            .where('deadline', '>=', today)
             .orderBy('deadline', 'asc')
             .get(),
         demandsCol()
             .where('status', '==', 'negotiating')
             .where('isRecurring', '==', false)
+            .where('deadline', '>=', today)
             .orderBy('deadline', 'asc')
             .get(),
     ]);
-
-    void VISIBLE; // used for documentation only
 
     const toList = (snap: FirebaseFirestore.QuerySnapshot) =>
         snap.docs.map(d => ({ id: d.id, ...d.data() } as EstablishmentDemand));
@@ -183,6 +184,38 @@ export async function listOpenDemands(): Promise<EstablishmentDemand[]> {
     const recurring = [...toList(recurringOpen), ...toList(recurringNeg)];
     const pontual   = [...toList(pontualOpen),   ...toList(pontualNeg)];
     return [...recurring, ...pontual];
+}
+
+/**
+ * Marca como 'expired' todas as demandas pontuais (isRecurring=false) com
+ * status 'open' ou 'negotiating' cujo deadline já passou.
+ * Deve ser chamada antes de listar o marketplace para manter o Firestore consistente.
+ */
+export async function expireOverdueDemands(): Promise<void> {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+    const [overdueOpen, overdueNeg] = await Promise.all([
+        demandsCol()
+            .where('status', '==', 'open')
+            .where('isRecurring', '==', false)
+            .where('deadline', '<', today)
+            .get(),
+        demandsCol()
+            .where('status', '==', 'negotiating')
+            .where('isRecurring', '==', false)
+            .where('deadline', '<', today)
+            .get(),
+    ]);
+
+    const overdue = [...overdueOpen.docs, ...overdueNeg.docs];
+    if (overdue.length === 0) return;
+
+    const now = new Date().toISOString();
+    const batch = db.batch();
+    for (const doc of overdue) {
+        batch.update(doc.ref, { status: 'expired', updatedAt: now });
+    }
+    await batch.commit();
 }
 
 export async function findDemand(demandId: string): Promise<EstablishmentDemand | null> {
@@ -238,7 +271,7 @@ export async function cancelDemand(
     const existing = await findDemand(demandId);
     if (!existing) throw new Error('Demand not found.');
     if (existing.establishmentUid !== establishmentUid) throw new Error('Forbidden.');
-    if (existing.status === 'closed' || existing.status === 'cancelled') throw new Error('Cannot cancel a closed demand.');
+    if (existing.status === 'closed' || existing.status === 'cancelled' || existing.status === 'expired') throw new Error('Cannot cancel a closed demand.');
 
     await demandsCol().doc(demandId).update({
         status: 'cancelled',

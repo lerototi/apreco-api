@@ -137,7 +137,7 @@ function makeCollectionRef(colPath: string, whereFilters: Array<{ field: string;
       )
       .map(([key, data]) => {
         const docId = key.slice(prefix.length);
-        return { id: docId, data: () => data, exists: true };
+        return { id: docId, data: () => data, exists: true, ref: makeDocRef(key, docId) };
       });
   }
 

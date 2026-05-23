@@ -23,6 +23,7 @@ import {
     findDemand,
     listDemandsByEstablishment,
     listOpenDemands,
+    expireOverdueDemands,
     updateDemand,
     VALID_CATEGORIES,
     VALID_UNITS,
@@ -176,6 +177,8 @@ export async function cancelMyDemand(req: Request, res: Response): Promise<void>
 /** GET /marketplace/demands */
 export async function getOpenDemands(req: Request, res: Response): Promise<void> {
     try {
+        // Expira demandas pontuais vencidas antes de listar (operação idempotente e barata)
+        await expireOverdueDemands();
         const demands = await listOpenDemands();
         res.json({ demands });
     } catch (e) {

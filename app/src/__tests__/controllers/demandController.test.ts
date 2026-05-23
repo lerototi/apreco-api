@@ -23,6 +23,7 @@ import {
   getOpenDemands,
   getOpenDemand,
 } from '../../controllers/demandController';
+import { expireOverdueDemands } from '../../models/establishmentDemand';
 import {
   makeRequest,
   makeResponse,
@@ -447,5 +448,97 @@ describe('getOpenDemand', () => {
 
     const returned = (res.json as jest.Mock).mock.calls[0][0];
     expect(returned.demand.id).toBe(DEMAND_ID);
+  });
+});
+
+// ─── expireOverdueDemands ─────────────────────────────────────────────────────
+
+describe('expireOverdueDemands', () => {
+  const PAST_DATE   = '2000-01-01';
+  const FUTURE_DATE = '2099-12-31';
+
+  it('marca como expired demanda open com deadline passado', async () => {
+    firestoreStore.set('establishmentDemands/demand-overdue', makeEstablishmentDemand({
+      id: 'demand-overdue',
+      status: 'open',
+      isRecurring: false,
+      deadline: PAST_DATE,
+    }));
+
+    await expireOverdueDemands();
+
+    const updated = firestoreStore.get('establishmentDemands/demand-overdue');
+    expect(updated?.status).toBe('expired');
+  });
+
+  it('marca como expired demanda negotiating com deadline passado', async () => {
+    firestoreStore.set('establishmentDemands/demand-neg-overdue', makeEstablishmentDemand({
+      id: 'demand-neg-overdue',
+      status: 'negotiating',
+      isRecurring: false,
+      deadline: PAST_DATE,
+    }));
+
+    await expireOverdueDemands();
+
+    const updated = firestoreStore.get('establishmentDemands/demand-neg-overdue');
+    expect(updated?.status).toBe('expired');
+  });
+
+  it('não toca demanda com deadline no futuro', async () => {
+    firestoreStore.set('establishmentDemands/demand-future', makeEstablishmentDemand({
+      id: 'demand-future',
+      status: 'open',
+      isRecurring: false,
+      deadline: FUTURE_DATE,
+    }));
+
+    await expireOverdueDemands();
+
+    const unchanged = firestoreStore.get('establishmentDemands/demand-future');
+    expect(unchanged?.status).toBe('open');
+  });
+
+  it('não toca demanda recorrente (isRecurring=true) mesmo sem deadline', async () => {
+    firestoreStore.set('establishmentDemands/demand-recurring', makeEstablishmentDemand({
+      id: 'demand-recurring',
+      status: 'open',
+      isRecurring: true,
+      deadline: null,
+    }));
+
+    await expireOverdueDemands();
+
+    const unchanged = firestoreStore.get('establishmentDemands/demand-recurring');
+    expect(unchanged?.status).toBe('open');
+  });
+
+  it('não faz nada quando não há demandas vencidas', async () => {
+    // Store vazio
+    await expect(expireOverdueDemands()).resolves.toBeUndefined();
+  });
+
+  it('getOpenDemands não retorna demandas com deadline passado', async () => {
+    firestoreStore.set('establishmentDemands/demand-expired', makeEstablishmentDemand({
+      id: 'demand-expired',
+      status: 'open',
+      isRecurring: false,
+      deadline: PAST_DATE,
+    }));
+    firestoreStore.set('establishmentDemands/demand-valid', makeEstablishmentDemand({
+      id: 'demand-valid',
+      status: 'open',
+      isRecurring: false,
+      deadline: FUTURE_DATE,
+    }));
+
+    const req = makeRequest();
+    const res = makeResponse();
+    await getOpenDemands(req, res);
+
+    const returned = (res.json as jest.Mock).mock.calls[0][0];
+    const ids = returned.demands.map((d: { id: string }) => d.id);
+    expect(ids).toContain('demand-valid');
+    expect(ids).not.toContain('demand-expired');
   });
 });
