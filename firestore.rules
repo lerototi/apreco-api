@@ -78,5 +78,18 @@ service cloud.firestore {
       // Nunca permite escrita via cliente — apenas Admin SDK
       allow write: if false;
     }
+
+    // ─── Deliveries ────────────────────────────────────────────────────
+    // Leitura e escrita apenas via Admin SDK (API).
+    // O cliente consulta via REST — sem onSnapshot direto nesta coleção.
+    match /deliveries/{deliveryId} {
+      // Leitura permitida para produtor ou estabelecimento da entrega
+      allow read: if request.auth != null
+        && (request.auth.uid == resource.data.producerUid
+            || request.auth.uid == resource.data.establishmentUid);
+
+      // Escrita apenas via Admin SDK
+      allow write: if false;
+    }
   }
 }

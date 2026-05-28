@@ -32,6 +32,7 @@ import { findOffer, listOffersWithChatByEstablishment, listOffersWithChatByProdu
 import { findDemand } from '../models/establishmentDemand';
 import { findRuralProducerProfile } from '../models/profiles';
 import { findEstablishmentProfile } from '../models/profiles';
+import { findDeliveryByOffer } from '../models/delivery';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -216,6 +217,7 @@ export async function estGetChatThreads(req: Request, res: Response): Promise<vo
 
                 const demand = await findDemand(offer.demandId);
                 const unread = await countUnreadForOffer(offer.id, uid, 'establishment');
+                const delivery = offer.status === 'accepted' ? await findDeliveryByOffer(offer.id) : null;
 
                 return {
                     offerId:           offer.id,
@@ -232,6 +234,8 @@ export async function estGetChatThreads(req: Request, res: Response): Promise<vo
                      offerUnit:            (offer as any).demandUnit ?? demand?.unit ?? 'unidade',
                      negotiatingPrice:     offer.negotiatingPrice ?? null,
                      negotiatingQuantity:  offer.negotiatingQuantity ?? null,
+                     deliveryId:           delivery?.id ?? null,
+                     deliveryStatus:       delivery?.status ?? null,
                  };
              })
          );
@@ -378,6 +382,8 @@ export async function producerGetChatThreads(req: Request, res: Response): Promi
                     || demand?.establishmentName
                     || 'Estabelecimento';
 
+                const delivery = offer.status === 'accepted' ? await findDeliveryByOffer(offer.id) : null;
+
                 return {
                     offerId:           offer.id,
                     demandId:          offer.demandId,
@@ -393,6 +399,8 @@ export async function producerGetChatThreads(req: Request, res: Response): Promi
                      offerUnit:            (offer as any).demandUnit ?? demand?.unit ?? 'unidade',
                      negotiatingPrice:     offer.negotiatingPrice ?? null,
                      negotiatingQuantity:  offer.negotiatingQuantity ?? null,
+                     deliveryId:           delivery?.id ?? null,
+                     deliveryStatus:       delivery?.status ?? null,
                  };
              })
          );

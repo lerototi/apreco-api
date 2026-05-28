@@ -189,6 +189,7 @@ import type { FarmProperty, FarmPropertyInput } from '../../models/farmProperty'
 import type { EstablishmentDemand } from '../../models/establishmentDemand';
 import type { DemandOffer } from '../../models/demandOffer';
 import type { ChatMessage, MessageAuthorRole } from '../../models/offerMessage';
+import type { Delivery } from '../../models/delivery';
 
 export function makeFarmPropertyInput(overrides: Partial<FarmPropertyInput> = {}): FarmPropertyInput {
   return {
@@ -273,6 +274,34 @@ export function makeChatMessage(overrides: Partial<ChatMessage> = {}): ChatMessa
     readBy: [],
     participantUids: [],
     createdAt: '2024-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+// ─── Delivery factory ─────────────────────────────────────────────────────────
+
+export function makeDelivery(overrides: Partial<Delivery> = {}): Delivery {
+  return {
+    id: 'delivery-001',
+    offerId: 'offer-001',
+    demandId: 'demand-001',
+    producerUid: 'uid-producer-001',
+    producerName: 'Sítio Raízes Vivas',
+    establishmentUid: 'uid-test-001',
+    establishmentName: 'Mercado Central',
+    productName: 'Tomate Cereja Orgânico',
+    quantity: 20,
+    unit: 'kg',
+    pricePerUnit: 10.00,
+    status: 'pending',
+    scheduledDeliveryAt: null,
+    shippingNote: null,
+    shippedAt: null,
+    receivedQuantity: null,
+    receptionNote: null,
+    confirmedAt: null,
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
     ...overrides,
   };
 }

@@ -27,6 +27,14 @@
  *   GET    /establishment/offers/:offerId/messages        → lista msgs da oferta
  *   POST   /establishment/offers/:offerId/messages        → envia msg
  *   POST   /establishment/offers/:offerId/messages/read   → marca lidas
+ *
+ * Entregas (estabelecimento):
+ *   GET  /establishment/deliveries                        → lista entregas do estabelecimento
+ *   GET  /establishment/deliveries/by-offer/:offerId      → entrega de uma oferta específica
+ *   GET  /establishment/deliveries/:deliveryId            → detalhe
+ *   POST /establishment/deliveries/:deliveryId/confirm    → confirma recebimento
+ *   POST /establishment/deliveries/:deliveryId/dispute    → abre disputa
+ *   POST /establishment/deliveries/:deliveryId/cancel     → cancela entrega em disputa
  */
 
 import { Router } from 'express';
@@ -34,6 +42,7 @@ import { authenticate } from '../middleware/auth';
 import * as demandController from '../controllers/demandController';
 import * as offerController from '../controllers/offerController';
 import * as offerMessageController from '../controllers/offerMessageController';
+import * as deliveryController from '../controllers/deliveryController';
 
 const router = Router();
 
@@ -59,5 +68,13 @@ router.get('/chat-threads/unread-count',              authenticate, offerMessage
 router.get('/offers/:offerId/messages',               authenticate, offerMessageController.estGetMessages);
 router.post('/offers/:offerId/messages',              authenticate, offerMessageController.estSendMessage);
 router.post('/offers/:offerId/messages/read',         authenticate, offerMessageController.estMarkRead);
+
+// ─── Entregas (estabelecimento) ───────────────────────────────────────────────
+router.get('/deliveries',                                       authenticate, deliveryController.estGetDeliveries);
+router.get('/deliveries/by-offer/:offerId',                     authenticate, deliveryController.estGetDeliveryByOffer);
+router.get('/deliveries/:deliveryId',                           authenticate, deliveryController.estGetDelivery);
+router.post('/deliveries/:deliveryId/confirm',                  authenticate, deliveryController.estConfirmDelivery);
+router.post('/deliveries/:deliveryId/dispute',                  authenticate, deliveryController.estDisputeDelivery);
+router.post('/deliveries/:deliveryId/cancel',                   authenticate, deliveryController.estCancelDelivery);
 
 export default router;

@@ -88,6 +88,9 @@ export interface ChatThread {
     lastMessageAt: string | null;
     unreadCount: number;
     offerStatus: string;
+    deliveryId: string | null;
+    /** Status atual da entrega associada (presente quando deliveryId não é null) */
+    deliveryStatus: string | null;
 }
 
 // ─── Coleção ──────────────────────────────────────────────────────────────────

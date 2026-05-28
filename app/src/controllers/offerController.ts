@@ -43,7 +43,9 @@ import {
 } from '../models/demandOffer';
 import { findDemand, updateDemandStatus } from '../models/establishmentDemand';
 import { findRuralProducerProfile } from '../models/profiles/ruralProducer';
+import { findEstablishmentProfile } from '../models/profiles/establishment';
 import { createSystemMessage, createMessage } from '../models/offerMessage';
+import { createDelivery } from '../models/delivery';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -168,6 +170,21 @@ export async function acceptOffer(req: Request, res: Response): Promise<void> {
         } else {
             await updateDemandStatus(offer.demandId, 'open');
         }
+
+        // Cria a entrega automaticamente ao aceitar a oferta
+        const estProfile = await findEstablishmentProfile(uid).catch(() => null);
+        await createDelivery({
+            offerId,
+            demandId: offer.demandId,
+            producerUid: offer.producerUid,
+            producerName: offer.producerName,
+            establishmentUid: uid,
+            establishmentName: estProfile?.businessName?.trim() || null,
+            productName: demand.productName,
+            quantity: offer.quantity,
+            unit: demand.unit,
+            pricePerUnit: offer.pricePerUnit,
+        }).catch((err) => console.error('[offer.acceptOffer] falha ao criar entrega:', err));
 
         await createSystemMessage(
             offerId,
@@ -433,6 +450,21 @@ export async function producerAcceptNegotiation(req: Request, res: Response): Pr
             } else {
                 await updateDemandStatus(offer.demandId, 'open');
             }
+
+            // Cria a entrega com os termos finais negociados
+            const estProfile2 = await findEstablishmentProfile(offer.establishmentUid).catch(() => null);
+            await createDelivery({
+                offerId,
+                demandId: offer.demandId,
+                producerUid,
+                producerName: offer.producerName,
+                establishmentUid: offer.establishmentUid,
+                establishmentName: estProfile2?.businessName?.trim() || null,
+                productName: demand.productName,
+                quantity: updated.quantity,       // valor final pós-negociação
+                unit: demand.unit,
+                pricePerUnit: updated.pricePerUnit, // valor final pós-negociação
+            }).catch((err) => console.error('[offer.producerAcceptNegotiation] falha ao criar entrega:', err));
         }
 
         await createSystemMessage(

@@ -25,6 +25,13 @@
  *   GET    /marketplace/offers/:offerId/messages          → lista msgs da oferta
  *   POST   /marketplace/offers/:offerId/messages          → envia msg
  *   POST   /marketplace/offers/:offerId/messages/read     → marca lidas
+ *
+ * Entregas (produtor):
+ *   GET  /marketplace/deliveries                          → lista próprias entregas
+ *   GET  /marketplace/deliveries/by-offer/:offerId        → entrega de uma oferta específica
+ *   GET  /marketplace/deliveries/:deliveryId              → detalhe
+ *   POST /marketplace/deliveries/:deliveryId/ship         → marca como enviado
+ *   POST /marketplace/deliveries/:deliveryId/cancel       → cancela entrega pendente
  */
 
 import { Router } from 'express';
@@ -33,6 +40,7 @@ import * as marketplaceController from '../controllers/marketplaceController';
 import * as demandController from '../controllers/demandController';
 import * as offerController from '../controllers/offerController';
 import * as offerMessageController from '../controllers/offerMessageController';
+import * as deliveryController from '../controllers/deliveryController';
 const router = Router();
 
 // ─── Público ──────────────────────────────────────────────────────────────────
@@ -57,5 +65,13 @@ router.get('/chat-threads/unread-count',                authenticate, offerMessa
 router.get('/offers/:offerId/messages',                 authenticate, offerMessageController.producerGetMessages);
 router.post('/offers/:offerId/messages',                authenticate, offerMessageController.producerSendMessage);
 router.post('/offers/:offerId/messages/read',           authenticate, offerMessageController.producerMarkRead);
+
+// ─── Entregas (produtor) ──────────────────────────────────────────────────────
+router.get('/deliveries',                                   authenticate, deliveryController.producerGetDeliveries);
+router.get('/deliveries/by-offer/:offerId',                 authenticate, deliveryController.producerGetDeliveryByOffer);
+router.get('/deliveries/:deliveryId',                       authenticate, deliveryController.producerGetDelivery);
+router.post('/deliveries/:deliveryId/schedule',             authenticate, deliveryController.producerScheduleDelivery);
+router.post('/deliveries/:deliveryId/ship',                 authenticate, deliveryController.producerShipDelivery);
+router.post('/deliveries/:deliveryId/cancel',               authenticate, deliveryController.producerCancelDelivery);
 
 export default router;
