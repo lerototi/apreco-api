@@ -12,6 +12,11 @@ import { db } from '../../config/firebase';
 
 // ─── Interface ────────────────────────────────────────────────────────────────
 
+interface GeoPoint {
+  latitude: number;
+  longitude: number;
+}
+
 export interface EstablishmentProfile {
   /** URL do avatar / logo do estabelecimento */
   avatarUrl: string | null;
@@ -25,12 +30,8 @@ export interface EstablishmentProfile {
   businessType: string | null;
   /** Descrição do estabelecimento */
   bio: string | null;
-  /** Endereço completo */
-  address: string | null;
-  /** Cidade */
-  city: string | null;
-  /** Estado (sigla, ex: SP) */
-  state: string | null;
+  /** Localização geográfica do estabelecimento */
+  location: GeoPoint | null;
   /** Telefone de contato */
   phone: string | null;
   /** Se o telefone é WhatsApp */
@@ -48,6 +49,23 @@ export interface EstablishmentProfile {
   linkedProducerIds: string[];
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function parseGeoPoint(value: unknown): GeoPoint | null {
+  if (
+    value !== null &&
+    typeof value === 'object' &&
+    typeof (value as any).latitude === 'number' &&
+    typeof (value as any).longitude === 'number'
+  ) {
+    return {
+      latitude: (value as any).latitude,
+      longitude: (value as any).longitude,
+    };
+  }
+  return null;
+}
+
 // ─── Schema (sanitização) ─────────────────────────────────────────────────────
 
 type ProfileInput = Record<string, unknown>;
@@ -60,9 +78,7 @@ export function buildEstablishmentProfile(p: ProfileInput): EstablishmentProfile
     cnpj: (p.cnpj as string) || null,
     businessType: (p.businessType as string) || null,
     bio: (p.bio as string) || null,
-    address: (p.address as string) || null,
-    city: (p.city as string) || null,
-    state: (p.state as string) || null,
+    location: parseGeoPoint(p.location),
     phone: (p.phone as string) || null,
     isWhatsApp: typeof p.isWhatsApp === 'boolean' ? p.isWhatsApp : false,
     instagram: (p.instagram as string) || null,

@@ -121,6 +121,36 @@ describe('sanitizeProfile', () => {
       const result = sanitizeProfile('establishment', {});
       expect((result as { recurringNeeds: string[] }).recurringNeeds).toEqual([]);
     });
+
+    it('persiste location com latitude e longitude válidos', () => {
+      const result = sanitizeProfile('establishment', {
+        location: { latitude: -23.5505, longitude: -46.6333 },
+      });
+      expect((result as any).location).toEqual({ latitude: -23.5505, longitude: -46.6333 });
+    });
+
+    it('define location como null quando ausente', () => {
+      const result = sanitizeProfile('establishment', {});
+      expect((result as any).location).toBeNull();
+    });
+
+    it('define location como null quando latitude/longitude não são números', () => {
+      const result = sanitizeProfile('establishment', {
+        location: { latitude: 'invalido', longitude: null },
+      });
+      expect((result as any).location).toBeNull();
+    });
+
+    it('não persiste campos address/city/state legados', () => {
+      const result = sanitizeProfile('establishment', {
+        address: 'Rua Velha, 1',
+        city: 'São Paulo',
+        state: 'SP',
+      }) as any;
+      expect(result).not.toHaveProperty('address');
+      expect(result).not.toHaveProperty('city');
+      expect(result).not.toHaveProperty('state');
+    });
   });
 });
 

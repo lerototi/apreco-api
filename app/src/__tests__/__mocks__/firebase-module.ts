@@ -186,8 +186,15 @@ export const db = {
   batch: jest.fn(() => {
     const ops: Array<() => void> = [];
     return {
-      set: jest.fn((ref: any, data: Record<string, unknown>) => {
-        ops.push(() => firestoreStore.set(ref._fullPath ?? ref.id, { ...data }));
+      set: jest.fn((ref: any, data: Record<string, unknown>, options?: { merge?: boolean }) => {
+        ops.push(() => {
+          if (options?.merge) {
+            const existing: any = firestoreStore.get(ref._fullPath ?? ref.id) ?? {};
+            firestoreStore.set(ref._fullPath ?? ref.id, applyArrayMarkers(existing, data));
+          } else {
+            firestoreStore.set(ref._fullPath ?? ref.id, { ...data });
+          }
+        });
       }),
       update: jest.fn((ref: any, data: Record<string, unknown>) => {
         ops.push(() => {

@@ -44,6 +44,7 @@ import {
     buildDisputeInput,
 } from '../models/delivery';
 import { createSystemMessage } from '../models/offerMessage';
+import { creditSeeds, SEED_REWARDS } from '../models/seeds';
 
 // ─── Rotas do produtor ────────────────────────────────────────────────────────
 
@@ -299,6 +300,30 @@ export async function estConfirmDelivery(req: Request, res: Response): Promise<v
             [uid, delivery.producerUid],
             [{ uid: delivery.producerUid, role: 'ruralProducer' }],
         ).catch(() => {});
+
+        // Creditar sementes para o produtor e para o estabelecimento (fire-and-forget)
+        const idKeyProducer = `${deliveryId}:producer_delivery`;
+        const idKeyEstab    = `${deliveryId}:establishment_confirm`;
+
+        creditSeeds({
+            uid:            delivery.producerUid,
+            amount:         SEED_REWARDS.PRODUCER_DELIVERY_CREDIT,
+            reason:         'producer_delivery',
+            description:    `Entrega confirmada — ${delivery.productName}`,
+            deliveryId,
+            offerId:        delivery.offerId,
+            idempotencyKey: idKeyProducer,
+        }).catch(e => console.error('[seeds] credit producer error:', e));
+
+        creditSeeds({
+            uid:            uid,
+            amount:         SEED_REWARDS.ESTABLISHMENT_CONFIRM_CREDIT,
+            reason:         'establishment_confirm',
+            description:    `Recebimento confirmado — ${delivery.productName}`,
+            deliveryId,
+            offerId:        delivery.offerId,
+            idempotencyKey: idKeyEstab,
+        }).catch(e => console.error('[seeds] credit establishment error:', e));
 
         res.json({ delivery: updated });
     } catch (e) {
