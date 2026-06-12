@@ -52,8 +52,7 @@ export interface ProducerProduct {
   /** Unidade de medida (ex: kg, unidade, dúzia, litro) */
   unit: string | null;
   /**
-   * URLs das fotos do produto.
-   * Por enquanto URLs externas; futuramente upload para Firebase Storage.
+   * URLs de download das fotos do produto hospedadas no Firebase Storage.
    */
   photos: string[];
   /** O produtor aceita trocas por este produto */
