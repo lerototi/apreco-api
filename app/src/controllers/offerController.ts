@@ -361,7 +361,28 @@ export async function submitOffer(req: Request, res: Response): Promise<void> {
                 producerName,
                 'ruralProducer',
                 input.message,
+                [`${producerUid}:ruralProducer`],
+                [producerUid, demand.establishmentUid],
+                [{ uid: demand.establishmentUid, role: 'establishment' }],
             ).catch(() => {});
+        }
+
+        // Cria uma mensagem de imagem no chat para cada foto anexada à oferta
+        if (input.photos && input.photos.length > 0) {
+            for (const photoUrl of input.photos) {
+                await createMessage(
+                    offer.id,
+                    demandId,
+                    producerUid,
+                    producerName,
+                    'ruralProducer',
+                    '📷 Foto do produto',
+                    [`${producerUid}:ruralProducer`],
+                    [producerUid, demand.establishmentUid],
+                    [{ uid: demand.establishmentUid, role: 'establishment' }],
+                    photoUrl,
+                ).catch(() => {});
+            }
         }
 
         res.status(201).json({ offer });

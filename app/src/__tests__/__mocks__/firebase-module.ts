@@ -36,10 +36,25 @@ const increment = (n: number) => ({ __increment: n });
 
 // ─── Mock do admin ────────────────────────────────────────────────────────────
 
+export const makeStorageFileMock = () => ({
+  save: jest.fn().mockResolvedValue(undefined),
+  createWriteStream: jest.fn(),
+});
+
+export const makeBucketMock = () => ({
+  name: 'apreco-test.appspot.com',
+  file: jest.fn(() => makeStorageFileMock()),
+});
+
+export const mockStorage = {
+  bucket: jest.fn(() => makeBucketMock()),
+};
+
 export const admin = {
   firestore: {
     FieldValue: { serverTimestamp, arrayUnion, arrayRemove, increment },
   },
+  storage: jest.fn(() => mockStorage),
 };
 
 // ─── Helpers internos ─────────────────────────────────────────────────────────
@@ -255,3 +270,9 @@ export const db = {
 export const auth = {
   verifyIdToken: jest.fn(),
 };
+
+export const storageBucket = 'apreco-app-br.firebasestorage.app';
+
+// ─── Mock do Storage ───────────────────────────────────────────────────────────
+// storage() → retorna o mockStorage (que tem bucket())
+export { mockStorage as storage };

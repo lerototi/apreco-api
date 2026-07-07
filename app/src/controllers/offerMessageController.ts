@@ -232,6 +232,7 @@ export async function estGetChatThreads(req: Request, res: Response): Promise<vo
                     offerPricePerUnit:    offer.pricePerUnit,
                      offerQuantity:        offer.quantity,
                      offerUnit:            (offer as any).demandUnit ?? demand?.unit ?? 'unidade',
+                     offerPhotos:          (offer as any).photos ?? null,
                      negotiatingPrice:     offer.negotiatingPrice ?? null,
                      negotiatingQuantity:  offer.negotiatingQuantity ?? null,
                      deliveryId:           delivery?.id ?? null,
@@ -239,12 +240,12 @@ export async function estGetChatThreads(req: Request, res: Response): Promise<vo
                  };
              })
          );
- 
+
          const threads = threadResults.filter(Boolean);
- 
+
          // Ordena: mais recente primeiro por data da última mensagem
          threads.sort((a, b) => b!.lastMessageAt.localeCompare(a!.lastMessageAt));
- 
+
          res.json({ threads });
      } catch (e) {
          console.error('[offerMessage.estGetChatThreads] error:', e);
@@ -397,6 +398,7 @@ export async function producerGetChatThreads(req: Request, res: Response): Promi
                     offerPricePerUnit:    offer.pricePerUnit,
                      offerQuantity:        offer.quantity,
                      offerUnit:            (offer as any).demandUnit ?? demand?.unit ?? 'unidade',
+                     offerPhotos:          (offer as any).photos ?? null,
                      negotiatingPrice:     offer.negotiatingPrice ?? null,
                      negotiatingQuantity:  offer.negotiatingQuantity ?? null,
                      deliveryId:           delivery?.id ?? null,

@@ -62,6 +62,13 @@ export interface ChatMessage {
     text: string;
 
     /**
+     * URL de imagem (Firebase Storage) anexada a esta mensagem.
+     * Presente em mensagens de foto enviadas junto com a oferta.
+     * Quando definido, a bolha exibe a imagem no lugar (ou além) do texto.
+     */
+    imageUrl?: string | null;
+
+    /**
      * Chaves compostas `uid:role` de quem já leu esta mensagem.
      * Ex: `["uid123:establishment", "uid456:ruralProducer"]`
      * Uma mensagem é não lida para `uid+role` se `"uid:role"` NÃO está neste array.
@@ -88,6 +95,8 @@ export interface ChatThread {
     lastMessageAt: string | null;
     unreadCount: number;
     offerStatus: string;
+    /** Fotos do produto enviadas pelo produtor junto com a oferta */
+    offerPhotos?: string[] | null;
     deliveryId: string | null;
     /** Status atual da entrega associada (presente quando deliveryId não é null) */
     deliveryStatus: string | null;
@@ -227,6 +236,7 @@ export async function createMessage(
     initialReadBy: string[] = [],
     participantUids: string[] = [],
     unreadRecipients: Array<{ uid: string; role: 'establishment' | 'ruralProducer' }> = [],
+    imageUrl?: string | null,
 ): Promise<ChatMessage> {
     const now = new Date().toISOString();
     const ref = messagesCol().doc();
@@ -248,6 +258,7 @@ export async function createMessage(
         participantUids,
         createdAt:      now,
     };
+    if (imageUrl) msg.imageUrl = imageUrl;
     await ref.set(msg);
 
     // Incrementa o contador de não lidas para cada destinatário explícito.

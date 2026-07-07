@@ -35,13 +35,20 @@
  */
 
 import { Router } from 'express';
+import multer from 'multer';
 import { authenticate } from '../middleware/auth';
 import * as marketplaceController from '../controllers/marketplaceController';
 import * as demandController from '../controllers/demandController';
 import * as offerController from '../controllers/offerController';
 import * as offerMessageController from '../controllers/offerMessageController';
 import * as deliveryController from '../controllers/deliveryController';
+import { uploadPhoto } from '../controllers/uploadController';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 const router = Router();
+
+// ─── Upload ────────────────────────────────────────────────────────────────────
+router.post('/upload', authenticate, upload.single('file'), uploadPhoto);
 
 // ─── Público ──────────────────────────────────────────────────────────────────
 router.get('/products',           marketplaceController.getProducts);

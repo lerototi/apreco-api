@@ -41,6 +41,9 @@ export interface DemandOffer {
     /** Preço por unidade ofertado pelo produtor */
     pricePerUnit: number;
 
+    /** Fotos do produto ofertado (URLs do Firebase Storage) */
+    photos?: string[];
+
     /** Mensagem livre do produtor (prazo, condições, origem etc.) */
     message: string | null;
 
@@ -62,17 +65,25 @@ export interface DemandOffer {
 }
 
 export type DemandOfferInput = Pick<DemandOffer,
-    'quantity' | 'pricePerUnit' | 'message'>;
+    'quantity' | 'pricePerUnit' | 'message'> & {
+    /** URLs de fotos do produto (Firebase Storage) enviadas pelo produtor */
+    photos?: string[];
+};
 
 // ─── Schema (sanitização) ─────────────────────────────────────────────────────
 
 type RawInput = Record<string, unknown>;
 
 export function buildOfferInput(p: RawInput): DemandOfferInput {
+    const rawPhotos = p.photos;
+    const photos: string[] = Array.isArray(rawPhotos)
+        ? (rawPhotos as unknown[]).filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
+        : [];
     return {
         quantity:     typeof p.quantity     === 'number' && p.quantity > 0     ? p.quantity     : 0,
         pricePerUnit: typeof p.pricePerUnit === 'number' && p.pricePerUnit > 0 ? p.pricePerUnit : 0,
         message:      typeof p.message === 'string' && p.message.trim()        ? p.message.trim() : null,
+        ...(photos.length > 0 ? { photos } : {}),
     };
 }
 
